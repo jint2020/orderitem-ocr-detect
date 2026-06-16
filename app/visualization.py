@@ -13,8 +13,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from unicom_ocr_detect.fields import FieldResult
-from unicom_ocr_detect.ocr_result import OcrItem
+from fields import FieldResult
+from ocr_result import OcrItem
 
 
 def save_label_image(

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from unicom_ocr_detect.fields import FieldResult, PHONE_RE, TARGET_FIELDS
+from fields import FieldResult, PHONE_RE, TARGET_FIELDS
 
 
 DATE_VALUE_RE = re.compile(r"\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?")

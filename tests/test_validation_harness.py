@@ -1,13 +1,17 @@
+from io import BytesIO
 import json
 from pathlib import Path
 
 from PIL import Image
+from werkzeug.datastructures import FileStorage
 
-from unicom_ocr_detect.fields import extract_fields
-from unicom_ocr_detect.field_quality import apply_quality_to_fields, evaluate_fields
-from unicom_ocr_detect.images import discover_images
-from unicom_ocr_detect.ocr_result import OcrItem, normalize_paddle_result
-from unicom_ocr_detect.run_validation import read_model_name, run_validation
+from app.models.ocr_models import OcrItem, normalize_paddle_result
+from app.repositories.ocr_result_repository import OcrResultRepository
+from app.services.field_extraction import extract_fields
+from app.services.field_quality import apply_quality_to_fields, evaluate_fields
+from app.services.image_service import discover_images
+from app.services.ocr_service import OcrService
+from app.services.paddle_ocr_provider import read_model_name
 
 
 def test_discover_images_returns_supported_files_sorted(tmp_path):
@@ -67,7 +71,23 @@ def test_extract_fields_strips_copy_suffix_from_phone_number():
     assert fields["号码"].value == "13800001234"
 
 
-def test_extract_fields_uses_filename_phone_as_fallback_when_ocr_misses_number():
+def test_extract_fields_uses_filename_phone_as_fallback_when_enabled():
+    items = [
+        OcrItem(text="日期", score=0.98, box=(10, 60, 60, 80)),
+        OcrItem(text="2026年06月14日", score=0.96, box=(200, 60, 400, 80)),
+    ]
+
+    fields = extract_fields(
+        items,
+        image_path=Path("13242337390.jpg"),
+        allow_filename_fallback=True,
+    )
+
+    assert fields["号码"].value == "13242337390"
+    assert fields["号码"].source == "filename"
+
+
+def test_extract_fields_disables_filename_phone_fallback_by_default():
     items = [
         OcrItem(text="日期", score=0.98, box=(10, 60, 60, 80)),
         OcrItem(text="2026年06月14日", score=0.96, box=(200, 60, 400, 80)),
@@ -75,8 +95,8 @@ def test_extract_fields_uses_filename_phone_as_fallback_when_ocr_misses_number()
 
     fields = extract_fields(items, image_path=Path("13242337390.jpg"))
 
-    assert fields["号码"].value == "13242337390"
-    assert fields["号码"].source == "filename"
+    assert fields["号码"].value == ""
+    assert fields["号码"].source == "missing"
 
 
 def test_extract_fields_reads_customer_name_alias():
@@ -162,18 +182,35 @@ def test_read_model_name_returns_global_model_name_from_inference_yml(tmp_path):
     assert read_model_name(model_dir) == "PP-OCRv6_small_det"
 
 
-class FakeOcr:
-    def predict(self, image_path: str):
+class AcceptableFirstCandidateFakeOcr:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def predict(self, image_path: Path):
+        self.calls.append(Path(image_path).name)
         return [
             {
                 "res": {
-                    "rec_texts": ["号码：", "13800001234", "客户名称：", "张三"],
-                    "rec_scores": [0.99, 0.98, 0.97, 0.96],
+                    "rec_texts": [
+                        "号码：",
+                        "13800001234复制",
+                        "日期：",
+                        "2026.06.14 17:18:12",
+                        "客户名称：",
+                        "张三",
+                        "套餐名称：",
+                        "5G畅享套餐129元",
+                    ],
+                    "rec_scores": [0.99, 0.98, 0.99, 0.97, 0.99, 0.96, 0.99, 0.98],
                     "rec_polys": [
                         [[10, 10], [60, 10], [60, 30], [10, 30]],
                         [[200, 10], [360, 10], [360, 30], [200, 30]],
-                        [[10, 60], [100, 60], [100, 80], [10, 80]],
-                        [[200, 60], [260, 60], [260, 80], [200, 80]],
+                        [[10, 60], [60, 60], [60, 80], [10, 80]],
+                        [[200, 60], [390, 60], [390, 80], [200, 80]],
+                        [[10, 110], [100, 110], [100, 130], [10, 130]],
+                        [[200, 110], [260, 110], [260, 130], [200, 130]],
+                        [[10, 160], [100, 160], [100, 180], [10, 180]],
+                        [[200, 160], [430, 160], [430, 180], [200, 180]],
                     ],
                 }
             }
@@ -184,7 +221,7 @@ class RotationAwareFakeOcr:
     def __init__(self):
         self.calls: list[str] = []
 
-    def predict(self, image_path: str):
+    def predict(self, image_path: Path):
         self.calls.append(Path(image_path).name)
         if ".rot90" not in Path(image_path).name:
             return [
@@ -240,91 +277,87 @@ class RotationAwareFakeOcr:
         ]
 
 
-def test_run_validation_writes_progress_logs(tmp_path, capsys):
-    image_dir = tmp_path / "images"
-    image_dir.mkdir()
-    Image.new("RGB", (420, 160), "white").save(image_dir / "sample.jpg")
-    det_model_dir = tmp_path / "det"
-    rec_model_dir = tmp_path / "rec"
-    det_model_dir.mkdir()
-    rec_model_dir.mkdir()
-    output_dir = tmp_path / "outputs"
-
-    run_validation(
-        images_dir=image_dir,
-        det_model_dir=det_model_dir,
-        rec_model_dir=rec_model_dir,
-        output_dir=output_dir,
-        ocr=FakeOcr(),
-    )
-
-    logs = capsys.readouterr().out
-    assert "[ocr-validate] start images=1" in logs
-    assert "[ocr-validate] model det_dir=" in logs
-    assert "[ocr-validate] image start 1/1 sample.jpg" in logs
-    assert "[ocr-validate] image done 1/1 sample.jpg" in logs
-    assert "[ocr-validate] report written" in logs
-    assert "[ocr-validate] summary" in logs
-    assert (output_dir / "sample.json").exists()
-    assert (output_dir / "summary.json").exists()
+def _upload_file(name: str = "sample.jpg") -> FileStorage:
+    stream = BytesIO()
+    Image.new("RGB", (420, 160), "white").save(stream, format="JPEG")
+    stream.seek(0)
+    return FileStorage(stream=stream, filename=name, content_type="image/jpeg")
 
 
-def test_run_validation_writes_label_image(tmp_path):
-    image_dir = tmp_path / "images"
-    image_dir.mkdir()
-    Image.new("RGB", (420, 160), "white").save(image_dir / "sample.jpg")
-    det_model_dir = tmp_path / "det"
-    rec_model_dir = tmp_path / "rec"
-    det_model_dir.mkdir()
-    rec_model_dir.mkdir()
-    output_dir = tmp_path / "outputs"
+def test_ocr_service_writes_report_and_label_image(tmp_path):
+    repository = OcrResultRepository(tmp_path)
+    service = OcrService(repository=repository, provider=AcceptableFirstCandidateFakeOcr())
 
-    run_validation(
-        images_dir=image_dir,
-        det_model_dir=det_model_dir,
-        rec_model_dir=rec_model_dir,
-        output_dir=output_dir,
-        ocr=FakeOcr(),
-    )
+    content = service.recognize_order_image(_upload_file(), request_id="request-1")
 
-    label_image = output_dir / "label_img" / "sample.jpg"
-    assert label_image.exists()
-    with Image.open(label_image) as image:
+    assert content["request_id"] == "request-1"
+    assert content["fields"]["号码"]["value"] == "13800001234"
+    assert content["artifacts"] == {
+        "original_image": "requests/request-1/original/sample.jpg",
+        "label_image": "requests/request-1/label_img/sample.jpg",
+        "report": "requests/request-1/report.json",
+    }
+
+    report_path = tmp_path / "request-1" / "report.json"
+    label_image_path = tmp_path / "request-1" / "label_img" / "sample.jpg"
+    assert report_path.exists()
+    assert label_image_path.exists()
+    assert json.loads(report_path.read_text(encoding="utf-8"))["artifacts"] == content["artifacts"]
+    with Image.open(label_image_path) as image:
         assert image.size == (420, 160)
 
 
-def test_run_validation_selects_best_rotated_candidate_when_original_quality_is_bad(tmp_path, capsys):
-    image_dir = tmp_path / "images"
-    image_dir.mkdir()
-    Image.new("RGB", (420, 160), "white").save(image_dir / "sample.jpg")
-    det_model_dir = tmp_path / "det"
-    rec_model_dir = tmp_path / "rec"
-    det_model_dir.mkdir()
-    rec_model_dir.mkdir()
-    output_dir = tmp_path / "outputs"
-    ocr = RotationAwareFakeOcr()
+def test_ocr_service_selects_best_rotated_candidate_when_original_quality_is_bad(tmp_path):
+    repository = OcrResultRepository(tmp_path)
+    provider = RotationAwareFakeOcr()
+    service = OcrService(repository=repository, provider=provider)
 
-    run_validation(
-        images_dir=image_dir,
-        det_model_dir=det_model_dir,
-        rec_model_dir=rec_model_dir,
-        output_dir=output_dir,
-        ocr=ocr,
-    )
+    content = service.recognize_order_image(_upload_file(), request_id="request-2")
 
-    report = json.loads((output_dir / "sample.json").read_text(encoding="utf-8"))
-    logs = capsys.readouterr().out
-
-    assert {name.split(".rot")[1].split(".")[0] for name in ocr.calls if ".rot" in name} == {
+    assert {name.split(".rot")[1].split(".")[0] for name in provider.calls if ".rot" in name} == {
         "0",
         "90",
         "180",
         "270",
     }
-    assert report["selected_rotation_degrees"] == 90
-    assert report["field_quality"]["acceptable"] is True
-    assert report["fields"]["号码"]["value"] == "18665011878"
-    assert report["fields"]["姓名"]["value"] == "王**"
-    assert report["fields"]["套餐信息"]["value"] == "广东流量王白银畅享220"
-    assert "[ocr-validate] orientation candidate rotation=90" in logs
-    assert "[ocr-validate] orientation selected rotation=90" in logs
+    assert content["selected_rotation_degrees"] == 90
+    assert content["field_quality"]["acceptable"] is True
+    assert content["fields"]["号码"]["value"] == "18665011878"
+    assert content["fields"]["姓名"]["value"] == "王**"
+    assert content["fields"]["套餐信息"]["value"] == "广东流量王白银畅享220"
+
+
+def test_ocr_service_stops_after_acceptable_zero_degree_candidate(tmp_path):
+    repository = OcrResultRepository(tmp_path)
+    provider = AcceptableFirstCandidateFakeOcr()
+    service = OcrService(repository=repository, provider=provider)
+
+    service.recognize_order_image(_upload_file(), request_id="request-3")
+
+    assert [name.split(".rot")[1].split(".")[0] for name in provider.calls if ".rot" in name] == ["0"]
+
+
+def test_ocr_service_disables_filename_phone_fallback_for_api_uploads(tmp_path):
+    repository = OcrResultRepository(tmp_path)
+
+    class DateOnlyProvider:
+        def predict(self, image_path: Path):
+            return [
+                {
+                    "res": {
+                        "rec_texts": ["日期", "2026年06月14日"],
+                        "rec_scores": [0.98, 0.96],
+                        "rec_polys": [
+                            [[10, 60], [60, 60], [60, 80], [10, 80]],
+                            [[200, 60], [400, 60], [400, 80], [200, 80]],
+                        ],
+                    }
+                }
+            ]
+
+    service = OcrService(repository=repository, provider=DateOnlyProvider())
+
+    content = service.recognize_order_image(_upload_file("13242337390.jpg"), request_id="request-4")
+
+    assert content["fields"]["号码"]["value"] == ""
+    assert content["fields"]["号码"]["source"].startswith("missing")

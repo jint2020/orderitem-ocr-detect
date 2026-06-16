@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from unicom_ocr_detect.ocr_result import OcrItem
+from ocr_result import OcrItem
 
 # 当前业务只需要这四个字段。保持固定顺序可让 JSON 输出、测试和前端展示更稳定。
 TARGET_FIELDS = ("号码", "日期", "姓名", "套餐信息")
