@@ -1,0 +1,26 @@
+[project]
+name = "unicom-ocr-detect"
+version = "0.1.0"
+description = "First-phase OCR validation harness for mobile app order pages."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "paddleocr>=3.3.0",
+    "paddlepaddle>=3.2.0",
+]
+
+[project.scripts]
+ocr-validate = "unicom_ocr_detect.run_validation:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
