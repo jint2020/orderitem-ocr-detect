@@ -21,3 +21,7 @@ __pycache__/
 !/models/README.md
 /doc/
 .omc
+/.claude/
+/.codegraph/
+.mcp.json
+.mcp.json
