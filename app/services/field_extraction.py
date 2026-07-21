@@ -79,20 +79,37 @@ def _extract_from_rows(field_name: str, rows: list[list[OcrItem]]) -> FieldResul
             if not _looks_like_label(item.text, aliases):
                 continue
 
-            candidates = row[item_index + 1 :]
-            if not candidates and row_index + 1 < len(rows):
-                candidates = rows[row_index + 1]
-
-            value_items = [
+            # 优先取同一行 label 右侧的文本（可能是同一 value 的多个片段）。
+            same_row = [
                 candidate
-                for candidate in candidates
-                if not _is_any_label(candidate.text) and candidate.text != item.text
+                for candidate in row[item_index + 1 :]
+                if not _is_any_label(candidate.text)
+                and candidate.text != item.text
+                and _is_plausible_value(field_name, candidate.text)
             ]
-            if not value_items:
-                continue
+            if same_row:
+                value_items = same_row
+            else:
+                # 同行没有 value 时，往上一行和下一行找。有些表单 value 的文本框
+                # 与 label 行高错位（被行聚类拆开），取与 label 竖向最近的一个。
+                adjacent: list[OcrItem] = []
+                if row_index + 1 < len(rows):
+                    adjacent.extend(rows[row_index + 1])
+                if row_index - 1 >= 0:
+                    adjacent.extend(rows[row_index - 1])
+                adjacent = [
+                    candidate
+                    for candidate in adjacent
+                    if not _is_any_label(candidate.text)
+                    and candidate.text != item.text
+                    and _is_plausible_value(field_name, candidate.text)
+                ]
+                if not adjacent:
+                    continue
+                value_items = [min(adjacent, key=lambda c: abs(c.center_y - item.center_y))]
 
             value = _normalize_field_value(field_name, _join_value_items(value_items))
-            confidence = min(item.score, sum(value_item.score for value_item in value_items) / len(value_items))
+            confidence = min(item.score, sum(v.score for v in value_items) / len(value_items))
             return FieldResult(
                 value=value,
                 confidence=confidence,
@@ -101,6 +118,18 @@ def _extract_from_rows(field_name: str, rows: list[list[OcrItem]]) -> FieldResul
                 candidates=(value,),
             )
     return None
+
+
+def _is_plausible_value(field_name: str, text: str) -> bool:
+    """Drop candidate values that are clearly wrong for the field.
+
+    号码本身期望手机号；其它字段若候选值是一个独立手机号，几乎一定是串行
+    到了相邻字段的值（例如把“联系电话”的号码当成“客户名称”），跳过。
+    """
+    if field_name != "号码" and PHONE_RE.search(text):
+        return False
+    return True
+
 
 
 def _extract_inline_label_value(field_name: str, items: list[OcrItem]) -> FieldResult | None:

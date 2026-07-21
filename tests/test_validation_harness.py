@@ -111,6 +111,26 @@ def test_extract_fields_reads_customer_name_alias():
     assert fields["姓名"].value == "廖**"
 
 
+def test_extract_fields_picks_name_above_label_when_value_box_is_offset():
+    # 真实订单页布局：value 文本框比 label 高 ~30px，行聚类把同一行的
+    # label/value 拆成两行；下一行是“联系电话”的手机号。姓名应取上方
+    # 的真实姓名，而不是下方的手机号。
+    items = [
+        OcrItem(text="18520566872复制", score=0.98, box=(552, 668, 822, 717)),
+        OcrItem(text="号码：", score=0.99, box=(158, 697, 237, 739)),
+        OcrItem(text="李**", score=0.96, box=(759, 722, 827, 766)),
+        OcrItem(text="客户名称：", score=0.99, box=(163, 753, 298, 797)),
+        OcrItem(text="13925139468复制", score=0.97, box=(557, 782, 827, 833)),
+        OcrItem(text="联系电话：", score=0.99, box=(166, 811, 301, 853)),
+    ]
+
+    fields = extract_fields(items)
+
+    assert fields["号码"].value == "18520566872"
+    assert fields["姓名"].value == "李**"
+    assert fields["姓名"].source == "label_value"
+
+
 def test_extract_fields_splits_inline_label_value_text():
     items = [
         OcrItem(
