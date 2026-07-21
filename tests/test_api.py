@@ -12,7 +12,7 @@ class FakeProvider:
         self.fail = fail
         self.calls: list[Path] = []
 
-    def predict(self, image_path: Path):
+    def predict(self, image_path: Path, use_classifier: bool = False):
         self.calls.append(image_path)
         if self.fail:
             raise RuntimeError("boom")
@@ -174,7 +174,7 @@ def test_label_image_can_be_disabled_via_query_param(tmp_path):
 
 def test_model_config_error_returns_wrapped_500(tmp_path):
     class MissingModelProvider:
-        def predict(self, image_path: Path):
+        def predict(self, image_path: Path, use_classifier: bool = False):
             raise FileNotFoundError("missing inference.yml")
 
     client = _app(tmp_path, provider=MissingModelProvider()).test_client()

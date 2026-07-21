@@ -205,10 +205,10 @@ def test_read_model_name_returns_global_model_name_from_inference_yml(tmp_path):
 
 class AcceptableFirstCandidateFakeOcr:
     def __init__(self):
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, bool]] = []
 
-    def predict(self, image_path: Path):
-        self.calls.append(Path(image_path).name)
+    def predict(self, image_path: Path, use_classifier: bool = False):
+        self.calls.append((Path(image_path).name, use_classifier))
         return [
             {
                 "res": {
@@ -259,43 +259,75 @@ def test_ocr_service_returns_label_image_base64():
         assert image.size == (420, 160)
 
 
-def test_ocr_service_reports_orientation_angle_and_runs_single_pass():
-    class AngleProvider:
-        def __init__(self):
-            self.calls: list[Path] = []
+def test_ocr_service_plain_pass_short_circuits_when_acceptable():
+    """Upright images that pass the quality gate on the plain 0° pass must not
+    trigger the classifier fallback (single OCR pass, rotation 0)."""
+    provider = AcceptableFirstCandidateFakeOcr()
+    service = OcrService(provider=provider)
 
-        def predict(self, image_path: Path):
-            self.calls.append(image_path)
+    content = service.recognize_order_image(_upload_file(), request_id="request-1")
+
+    assert len(provider.calls) == 1
+    assert provider.calls[0][1] is False  # plain pass, classifier off
+    assert content["selected_rotation_degrees"] == 0
+    assert content["fields"]["号码"]["value"] == "13800001234"
+
+
+def test_ocr_service_falls_back_to_classifier_when_plain_pass_fails():
+    """When the plain 0° pass fails the quality gate (e.g. a rotated photo
+    whose un-rotated OCR is garbage), the service runs the classifier pass and
+    returns its higher-scoring result with the detected rotation."""
+
+    class RotatedImageProvider:
+        def __init__(self):
+            self.calls: list[bool] = []
+
+        def predict(self, image_path: Path, use_classifier: bool = False):
+            self.calls.append(use_classifier)
+            if use_classifier:
+                return [
+                    {
+                        "res": {
+                            "doc_preprocessor_res": {
+                                "angle": 90,
+                                "model_settings": {"use_doc_orientation_classify": True},
+                            },
+                            "rec_texts": ["号码：", "13800001234"],
+                            "rec_scores": [0.99, 0.98],
+                            "rec_polys": [
+                                [[10, 10], [60, 10], [60, 30], [10, 30]],
+                                [[200, 10], [360, 10], [360, 30], [200, 30]],
+                            ],
+                        }
+                    }
+                ]
+            # plain 0° pass: rotated photo OCRs as garbage, no phone value
             return [
                 {
                     "res": {
-                        "doc_preprocessor_res": {
-                            "angle": 90,
-                            "model_settings": {"use_doc_orientation_classify": True},
-                        },
-                        "rec_texts": ["号码：", "13800001234"],
-                        "rec_scores": [0.99, 0.98],
+                        "rec_texts": ["？？？", "日期："],
+                        "rec_scores": [0.5, 0.5],
                         "rec_polys": [
                             [[10, 10], [60, 10], [60, 30], [10, 30]],
-                            [[200, 10], [360, 10], [360, 30], [200, 30]],
+                            [[10, 60], [60, 60], [60, 80], [10, 80]],
                         ],
                     }
                 }
             ]
 
-    provider = AngleProvider()
+    provider = RotatedImageProvider()
     service = OcrService(provider=provider)
 
     content = service.recognize_order_image(_upload_file(), request_id="request-2")
 
-    assert len(provider.calls) == 1
+    assert provider.calls == [False, True]  # plain then classifier
     assert content["selected_rotation_degrees"] == 90
     assert content["fields"]["号码"]["value"] == "13800001234"
 
 
 def test_ocr_service_disables_filename_phone_fallback_for_api_uploads():
     class DateOnlyProvider:
-        def predict(self, image_path: Path):
+        def predict(self, image_path: Path, use_classifier: bool = False):
             return [
                 {
                     "res": {
