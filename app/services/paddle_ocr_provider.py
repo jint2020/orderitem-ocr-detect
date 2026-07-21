@@ -11,9 +11,15 @@ class OcrProvider(Protocol):
 
 
 class PaddleOcrProvider:
-    def __init__(self, det_model_dir: Path, rec_model_dir: Path):
+    def __init__(
+        self,
+        det_model_dir: Path,
+        rec_model_dir: Path,
+        doc_orientation_model_dir: Path,
+    ):
         self.det_model_dir = det_model_dir
         self.rec_model_dir = rec_model_dir
+        self.doc_orientation_model_dir = doc_orientation_model_dir
         self._ocr: Any | None = None
 
     def predict(self, image_path: Path) -> list[Any]:
@@ -21,19 +27,31 @@ class PaddleOcrProvider:
 
     def _get_ocr(self):
         if self._ocr is None:
-            self._ocr = build_paddleocr(self.det_model_dir, self.rec_model_dir)
+            self._ocr = build_paddleocr(
+                self.det_model_dir,
+                self.rec_model_dir,
+                self.doc_orientation_model_dir,
+            )
         return self._ocr
 
 
-def build_paddleocr(det_model_dir: Path, rec_model_dir: Path):
+def build_paddleocr(
+    det_model_dir: Path,
+    rec_model_dir: Path,
+    doc_orientation_model_dir: Path,
+):
     from paddleocr import PaddleOCR
 
+    # 方向分类器（PP-LCNet_x1_0_doc_ori）在 PaddleOCR 内部判定 0/90/180/270
+    # 并把图旋正后再做一次 det+rec，替代原先 4 次全量 OCR 的多角度兜底。
     return PaddleOCR(
         text_detection_model_name=read_model_name(det_model_dir),
         text_detection_model_dir=str(det_model_dir),
         text_recognition_model_name=read_model_name(rec_model_dir),
         text_recognition_model_dir=str(rec_model_dir),
-        use_doc_orientation_classify=False,
+        doc_orientation_classify_model_name=read_model_name(doc_orientation_model_dir),
+        doc_orientation_classify_model_dir=str(doc_orientation_model_dir),
+        use_doc_orientation_classify=True,
         use_doc_unwarping=False,
         use_textline_orientation=False,
         device="cpu",

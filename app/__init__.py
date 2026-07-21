@@ -29,4 +29,8 @@ def _build_provider(app: Flask):
     factory = app.config.get("OCR_PROVIDER_FACTORY")
     if factory is not None:
         return factory(app)
-    return PaddleOcrProvider(app.config["DETECTION_MODEL_DIR"], app.config["RECOGNITION_MODEL_DIR"])
+    return PaddleOcrProvider(
+        app.config["DETECTION_MODEL_DIR"],
+        app.config["RECOGNITION_MODEL_DIR"],
+        app.config["DOC_ORIENTATION_MODEL_DIR"],
+    )

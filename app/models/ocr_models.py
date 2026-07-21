@@ -90,6 +90,22 @@ def normalize_paddle_result(raw_result: Any) -> list[OcrItem]:
     return items
 
 
+def extract_orientation_angle(raw_result: Any) -> int:
+    """Return the doc-orientation angle (0/90/180/270) reported by PaddleOCR.
+
+    PaddleOCR sets this when ``use_doc_orientation_classify=True``. Falls back to
+    0 when the result does not carry orientation info (e.g. fakes in tests).
+    """
+    data = _to_mapping(raw_result)
+    res = data.get("res", data) if isinstance(data, dict) else {}
+    pre = res.get("doc_preprocessor_res") if isinstance(res, dict) else None
+    if isinstance(pre, dict):
+        angle = pre.get("angle")
+        if isinstance(angle, (int, float)):
+            return int(angle)
+    return 0
+
+
 def _to_mapping(raw_result: Any) -> dict[str, Any]:
     if isinstance(raw_result, dict):
         return raw_result

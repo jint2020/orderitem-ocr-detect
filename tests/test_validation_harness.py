@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 
-from app.models.ocr_models import OcrItem, normalize_paddle_result
+from app.models.ocr_models import OcrItem, extract_orientation_angle, normalize_paddle_result
 from app.services.field_extraction import extract_fields
 from app.services.field_quality import apply_quality_to_fields, evaluate_fields
 from app.services.ocr_service import OcrService
@@ -29,6 +29,16 @@ def test_normalize_paddle_result_accepts_res_dict_with_polys_and_scores():
         OcrItem(text="号码", score=0.99, box=(10.0, 10.0, 60.0, 30.0)),
         OcrItem(text="13800001234", score=0.97, box=(200.0, 10.0, 360.0, 30.0)),
     ]
+
+
+def test_extract_orientation_angle_reads_angle_from_doc_preprocessor_res():
+    raw = {"res": {"doc_preprocessor_res": {"angle": 90}, "rec_texts": []}}
+    assert extract_orientation_angle(raw) == 90
+
+
+def test_extract_orientation_angle_defaults_to_zero_when_missing():
+    raw = {"res": {"rec_texts": []}}
+    assert extract_orientation_angle(raw) == 0
 
 
 def test_extract_fields_matches_same_row_label_value_pairs():
@@ -208,66 +218,6 @@ class AcceptableFirstCandidateFakeOcr:
         ]
 
 
-class RotationAwareFakeOcr:
-    def __init__(self):
-        self.calls: list[str] = []
-
-    def predict(self, image_path: Path):
-        self.calls.append(Path(image_path).name)
-        if ".rot90" not in Path(image_path).name:
-            return [
-                {
-                    "res": {
-                        "rec_texts": [
-                            "号码：",
-                            "2026.06.14 17:18:12186650118782026.06.07",
-                            "客户名称：",
-                            "2026.06.14 17:18:12Q请输入订单编号",
-                            "套餐名称：",
-                            "2026.06.14 17:18:1218665011878",
-                        ],
-                        "rec_scores": [0.99, 0.99, 0.99, 0.99, 0.99, 0.99],
-                        "rec_polys": [
-                            [[10, 10], [60, 10], [60, 30], [10, 30]],
-                            [[200, 10], [500, 10], [500, 30], [200, 30]],
-                            [[10, 60], [100, 60], [100, 80], [10, 80]],
-                            [[200, 60], [520, 60], [520, 80], [200, 80]],
-                            [[10, 110], [100, 110], [100, 130], [10, 130]],
-                            [[200, 110], [520, 110], [520, 130], [200, 130]],
-                        ],
-                    }
-                }
-            ]
-
-        return [
-            {
-                "res": {
-                    "rec_texts": [
-                        "号码：",
-                        "18665011878复制",
-                        "日期：",
-                        "2026.06.14 17:18:12",
-                        "客户名称：",
-                        "王**",
-                        "套餐名称：",
-                        "广东流量王白银畅享220",
-                    ],
-                    "rec_scores": [0.99, 0.98, 0.99, 0.97, 0.99, 0.96, 0.99, 0.98],
-                    "rec_polys": [
-                        [[10, 10], [60, 10], [60, 30], [10, 30]],
-                        [[200, 10], [360, 10], [360, 30], [200, 30]],
-                        [[10, 60], [60, 60], [60, 80], [10, 80]],
-                        [[200, 60], [390, 60], [390, 80], [200, 80]],
-                        [[10, 110], [100, 110], [100, 130], [10, 130]],
-                        [[200, 110], [260, 110], [260, 130], [200, 130]],
-                        [[10, 160], [100, 160], [100, 180], [10, 180]],
-                        [[200, 160], [430, 160], [430, 180], [200, 180]],
-                    ],
-                }
-            }
-        ]
-
-
 def _upload_file(name: str = "sample.jpg") -> FileStorage:
     stream = BytesIO()
     Image.new("RGB", (420, 160), "white").save(stream, format="JPEG")
@@ -282,38 +232,45 @@ def test_ocr_service_returns_label_image_base64():
 
     assert content["request_id"] == "request-1"
     assert content["fields"]["号码"]["value"] == "13800001234"
+    assert content["selected_rotation_degrees"] == 0
     assert content["label_image_base64"]
     image_bytes = base64.b64decode(content["label_image_base64"])
     with Image.open(io.BytesIO(image_bytes)) as image:
         assert image.size == (420, 160)
 
 
-def test_ocr_service_selects_best_rotated_candidate_when_original_quality_is_bad():
-    provider = RotationAwareFakeOcr()
+def test_ocr_service_reports_orientation_angle_and_runs_single_pass():
+    class AngleProvider:
+        def __init__(self):
+            self.calls: list[Path] = []
+
+        def predict(self, image_path: Path):
+            self.calls.append(image_path)
+            return [
+                {
+                    "res": {
+                        "doc_preprocessor_res": {
+                            "angle": 90,
+                            "model_settings": {"use_doc_orientation_classify": True},
+                        },
+                        "rec_texts": ["号码：", "13800001234"],
+                        "rec_scores": [0.99, 0.98],
+                        "rec_polys": [
+                            [[10, 10], [60, 10], [60, 30], [10, 30]],
+                            [[200, 10], [360, 10], [360, 30], [200, 30]],
+                        ],
+                    }
+                }
+            ]
+
+    provider = AngleProvider()
     service = OcrService(provider=provider)
 
     content = service.recognize_order_image(_upload_file(), request_id="request-2")
 
-    assert {name.split(".rot")[1].split(".")[0] for name in provider.calls if ".rot" in name} == {
-        "0",
-        "90",
-        "180",
-        "270",
-    }
+    assert len(provider.calls) == 1
     assert content["selected_rotation_degrees"] == 90
-    assert content["field_quality"]["acceptable"] is True
-    assert content["fields"]["号码"]["value"] == "18665011878"
-    assert content["fields"]["姓名"]["value"] == "王**"
-    assert content["fields"]["套餐信息"]["value"] == "广东流量王白银畅享220"
-
-
-def test_ocr_service_stops_after_acceptable_zero_degree_candidate():
-    provider = AcceptableFirstCandidateFakeOcr()
-    service = OcrService(provider=provider)
-
-    service.recognize_order_image(_upload_file(), request_id="request-3")
-
-    assert [name.split(".rot")[1].split(".")[0] for name in provider.calls if ".rot" in name] == ["0"]
+    assert content["fields"]["号码"]["value"] == "13800001234"
 
 
 def test_ocr_service_disables_filename_phone_fallback_for_api_uploads():

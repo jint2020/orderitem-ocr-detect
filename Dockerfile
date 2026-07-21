@@ -12,7 +12,8 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     VIRTUAL_ENV=/app/.venv \
-    PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+    PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin \
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 # PaddlePaddle / PaddleOCR / OpenCV 运行所需的系统库
 RUN apt-get update && apt-get install -y --no-install-recommends \
