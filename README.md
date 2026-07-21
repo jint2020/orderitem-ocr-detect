@@ -86,6 +86,45 @@ Label images use blue boxes for all OCR text regions and red boxes for extracted
 
 `日期` is currently extracted by prioritizing order-like timestamps over top filter date ranges. It is still marked as `need_confirm=true` until the business definition of `日期` is finalized.
 
+## Deployment (Docker Compose)
+
+The service ships as a stateless container. Models are bind-mounted read-only; no other volumes are needed.
+
+Prerequisites:
+
+- Docker with Compose.
+- PaddleOCR models downloaded under `models/` (see `models/README.md`). The service expects `models/PP-OCRv6_small_det_infer` and `models/PP-OCRv6_medium_rec`, each containing `inference.yml`.
+- The image targets `linux/amd64` because PaddlePaddle only publishes x86_64 Linux wheels. On Apple Silicon, enable Rosetta for x86/amd64 emulation in Docker Desktop (Settings -> "Use Rosetta for x86_64/amd64 emulation") for acceptable performance.
+
+Build and run:
+
+```bash
+docker compose up --build -d
+```
+
+The API is then available at `http://localhost:8080` (override the host port with `OCR_PORT`):
+
+```bash
+curl -X POST -F "image=@data/validation/example.jpg" http://localhost:8080/api/v1/ocr/orders
+curl -X POST -F "image=@data/validation/example.jpg" "http://localhost:8080/api/v1/ocr/orders?label_image=false"
+```
+
+Configuration via environment (set in `docker-compose.yml` or a `.env` file):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OCR_PORT` | `8080` | Host port mapped to the container's 5000 |
+| `GUNICORN_WORKERS` | `2` | Gunicorn workers; each loads its own PaddleOCR model on first request |
+| `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | Detection model directory |
+| `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
+| `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
+
+Notes:
+
+- The container is stateless: uploaded images are processed in a temporary directory removed per request. No `outputs/` volume is needed.
+- The first OCR request after start (per worker) is slow because PaddleOCR loads lazily; raise `--timeout` if you increase model size or worker count.
+- On macOS, port 5000 (AirPlay Receiver) and 8000 (OrbStack) are commonly occupied, so the default host port is `8080`. Override with `OCR_PORT`.
+
 ## Documentation
 
 - [当前阶段识别过程技术文档](doc/ocr流程.md)（本地文件，未纳入 git）
