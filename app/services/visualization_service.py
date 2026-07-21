@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -5,15 +6,13 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from app.models.ocr_models import FieldResult, OcrItem
 
 
-def save_label_image(
+def render_label_image(
     image_path: Path,
     ocr_items: list[OcrItem],
     fields: dict[str, FieldResult],
-    output_path: Path,
     rotation_degrees: int = 0,
-) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
+) -> bytes:
+    """Render OCR boxes and field boxes onto the image and return JPEG bytes."""
     with Image.open(image_path) as source:
         image = ImageOps.exif_transpose(source).convert("RGB").rotate(rotation_degrees % 360, expand=True)
 
@@ -29,7 +28,9 @@ def save_label_image(
         _draw_box(draw, field.box, color=(255, 64, 64), width=4)
         _draw_label(draw, field_name, field.box, font)
 
-    image.save(output_path)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
 
 
 def _draw_box(

@@ -1,25 +1,16 @@
+import base64
+import io
 from io import BytesIO
-import json
 from pathlib import Path
 
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 
 from app.models.ocr_models import OcrItem, normalize_paddle_result
-from app.repositories.ocr_result_repository import OcrResultRepository
 from app.services.field_extraction import extract_fields
 from app.services.field_quality import apply_quality_to_fields, evaluate_fields
-from app.services.image_service import discover_images
 from app.services.ocr_service import OcrService
 from app.services.paddle_ocr_provider import read_model_name
-
-
-def test_discover_images_returns_supported_files_sorted(tmp_path):
-    (tmp_path / "b.jpg").write_bytes(b"fake")
-    (tmp_path / "a.png").write_bytes(b"fake")
-    (tmp_path / "notes.txt").write_text("ignore")
-
-    assert discover_images(tmp_path) == [tmp_path / "a.png", tmp_path / "b.jpg"]
 
 
 def test_normalize_paddle_result_accepts_res_dict_with_polys_and_scores():
@@ -284,33 +275,22 @@ def _upload_file(name: str = "sample.jpg") -> FileStorage:
     return FileStorage(stream=stream, filename=name, content_type="image/jpeg")
 
 
-def test_ocr_service_writes_report_and_label_image(tmp_path):
-    repository = OcrResultRepository(tmp_path)
-    service = OcrService(repository=repository, provider=AcceptableFirstCandidateFakeOcr())
+def test_ocr_service_returns_label_image_base64():
+    service = OcrService(provider=AcceptableFirstCandidateFakeOcr())
 
     content = service.recognize_order_image(_upload_file(), request_id="request-1")
 
     assert content["request_id"] == "request-1"
     assert content["fields"]["号码"]["value"] == "13800001234"
-    assert content["artifacts"] == {
-        "original_image": "requests/request-1/original/sample.jpg",
-        "label_image": "requests/request-1/label_img/sample.jpg",
-        "report": "requests/request-1/report.json",
-    }
-
-    report_path = tmp_path / "request-1" / "report.json"
-    label_image_path = tmp_path / "request-1" / "label_img" / "sample.jpg"
-    assert report_path.exists()
-    assert label_image_path.exists()
-    assert json.loads(report_path.read_text(encoding="utf-8"))["artifacts"] == content["artifacts"]
-    with Image.open(label_image_path) as image:
+    assert content["label_image_base64"]
+    image_bytes = base64.b64decode(content["label_image_base64"])
+    with Image.open(io.BytesIO(image_bytes)) as image:
         assert image.size == (420, 160)
 
 
-def test_ocr_service_selects_best_rotated_candidate_when_original_quality_is_bad(tmp_path):
-    repository = OcrResultRepository(tmp_path)
+def test_ocr_service_selects_best_rotated_candidate_when_original_quality_is_bad():
     provider = RotationAwareFakeOcr()
-    service = OcrService(repository=repository, provider=provider)
+    service = OcrService(provider=provider)
 
     content = service.recognize_order_image(_upload_file(), request_id="request-2")
 
@@ -327,19 +307,16 @@ def test_ocr_service_selects_best_rotated_candidate_when_original_quality_is_bad
     assert content["fields"]["套餐信息"]["value"] == "广东流量王白银畅享220"
 
 
-def test_ocr_service_stops_after_acceptable_zero_degree_candidate(tmp_path):
-    repository = OcrResultRepository(tmp_path)
+def test_ocr_service_stops_after_acceptable_zero_degree_candidate():
     provider = AcceptableFirstCandidateFakeOcr()
-    service = OcrService(repository=repository, provider=provider)
+    service = OcrService(provider=provider)
 
     service.recognize_order_image(_upload_file(), request_id="request-3")
 
     assert [name.split(".rot")[1].split(".")[0] for name in provider.calls if ".rot" in name] == ["0"]
 
 
-def test_ocr_service_disables_filename_phone_fallback_for_api_uploads(tmp_path):
-    repository = OcrResultRepository(tmp_path)
-
+def test_ocr_service_disables_filename_phone_fallback_for_api_uploads():
     class DateOnlyProvider:
         def predict(self, image_path: Path):
             return [
@@ -355,7 +332,7 @@ def test_ocr_service_disables_filename_phone_fallback_for_api_uploads(tmp_path):
                 }
             ]
 
-    service = OcrService(repository=repository, provider=DateOnlyProvider())
+    service = OcrService(provider=DateOnlyProvider())
 
     content = service.recognize_order_image(_upload_file("13242337390.jpg"), request_id="request-4")
 

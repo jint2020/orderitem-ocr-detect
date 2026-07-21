@@ -1,10 +1,3 @@
-SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
-
-
-def is_supported_image(filename: str) -> bool:
-    return any(filename.lower().endswith(suffix) for suffix in SUPPORTED_IMAGE_SUFFIXES)
-
-
 def build_openapi_schema() -> dict[str, object]:
     return {
         "openapi": "3.0.3",
@@ -13,6 +6,19 @@ def build_openapi_schema() -> dict[str, object]:
             "/api/v1/ocr/orders": {
                 "post": {
                     "summary": "Recognize order fields from one uploaded image",
+                    "parameters": [
+                        {
+                            "name": "label_image",
+                            "in": "query",
+                            "required": False,
+                            "schema": {
+                                "type": "string",
+                                "enum": ["true", "false"],
+                                "default": "true",
+                            },
+                            "description": "Set to false to omit the base64 label image from the response.",
+                        }
+                    ],
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -26,7 +32,9 @@ def build_openapi_schema() -> dict[str, object]:
                         },
                     },
                     "responses": {
-                        "200": {"description": "Wrapped OCR result"},
+                        "200": {
+                            "description": "Wrapped OCR result with fields, field_quality, raw_ocr, selected_rotation_degrees, and label_image_base64 (omitted when label_image=false)"
+                        },
                         "400": {"description": "Wrapped request error"},
                         "413": {"description": "Wrapped upload size error"},
                         "500": {"description": "Wrapped server error"},

@@ -4,7 +4,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.schemas.ocr_schema import build_openapi_schema
 from app.services.image_service import validate_upload_image
-from app.services.ocr_service import OcrPersistenceError, OcrProcessingError, OcrService
+from app.services.ocr_service import OcrProcessingError, OcrService
 from app.views.json_response import error, success
 
 api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -30,16 +30,16 @@ def recognize_order():
     if not valid:
         return error(400, message, 400)
 
+    include_label_image = request.args.get("label_image", "true").lower() != "false"
+
     try:
-        service = OcrService(
-            repository=current_app.extensions["ocr_repository"],
-            provider=current_app.extensions["ocr_provider"],
+        service = OcrService(provider=current_app.extensions["ocr_provider"])
+        content = service.recognize_order_image(
+            image,
+            include_label_image=include_label_image,
         )
-        content = service.recognize_order_image(image)
     except UnidentifiedImageError:
         return error(400, "invalid image file", 400)
-    except OcrPersistenceError:
-        return error(500, "failed to persist ocr result", 500)
     except OcrProcessingError as exc:
         if _caused_by(exc, UnidentifiedImageError):
             return error(400, "invalid image file", 400)

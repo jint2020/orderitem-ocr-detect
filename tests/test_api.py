@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from pathlib import Path
 
@@ -44,11 +45,6 @@ class FakeProvider:
         ]
 
 
-class FailingRepository:
-    def create_workspace(self, request_id: str, filename: str):
-        raise OSError("disk full")
-
-
 def _image_bytes() -> BytesIO:
     stream = BytesIO()
     Image.new("RGB", (420, 160), "white").save(stream, format="JPEG")
@@ -56,14 +52,11 @@ def _image_bytes() -> BytesIO:
     return stream
 
 
-def _app(tmp_path, provider=None, repository_factory=None, max_content_length=None):
+def _app(tmp_path, provider=None, max_content_length=None):
     config = {
         "TESTING": True,
-        "OUTPUT_ROOT": tmp_path,
         "OCR_PROVIDER_FACTORY": lambda app: provider or FakeProvider(),
     }
-    if repository_factory is not None:
-        config["OCR_RESULT_REPOSITORY_FACTORY"] = repository_factory
     if max_content_length is not None:
         config["MAX_CONTENT_LENGTH"] = max_content_length
     return create_app(config)
@@ -157,10 +150,26 @@ def test_valid_upload_returns_wrapped_ocr_result(tmp_path):
     assert payload["code"] == 0
     content = payload["content"]
     assert content["fields"]["号码"]["value"] == "13800001234"
-    assert set(content["artifacts"]) == {"original_image", "label_image", "report"}
-    assert not content["artifacts"]["report"].startswith("/")
-    assert (tmp_path / content["request_id"] / "original" / "sample.jpg").exists()
-    assert (tmp_path / content["request_id"] / "report.json").exists()
+    assert content["label_image_base64"]
+    image_bytes = base64.b64decode(content["label_image_base64"])
+    with Image.open(BytesIO(image_bytes)) as image:
+        assert image.size == (420, 160)
+
+
+def test_label_image_can_be_disabled_via_query_param(tmp_path):
+    provider = FakeProvider()
+    client = _app(tmp_path, provider=provider).test_client()
+
+    response = client.post(
+        "/api/v1/ocr/orders?label_image=false",
+        data={"image": (_image_bytes(), "sample.jpg")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    content = response.get_json()["content"]
+    assert "label_image_base64" not in content
+    assert content["fields"]["号码"]["value"] == "13800001234"
 
 
 def test_model_config_error_returns_wrapped_500(tmp_path):
@@ -191,16 +200,3 @@ def test_provider_exception_returns_wrapped_500(tmp_path):
 
     assert response.status_code == 500
     assert response.get_json() == {"code": 500, "content": {}, "message": "ocr processing failed"}
-
-
-def test_repository_write_failure_returns_wrapped_500(tmp_path):
-    client = _app(tmp_path, repository_factory=lambda app: FailingRepository()).test_client()
-
-    response = client.post(
-        "/api/v1/ocr/orders",
-        data={"image": (_image_bytes(), "sample.jpg")},
-        content_type="multipart/form-data",
-    )
-
-    assert response.status_code == 500
-    assert response.get_json() == {"code": 500, "content": {}, "message": "failed to persist ocr result"}

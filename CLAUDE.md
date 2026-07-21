@@ -14,35 +14,28 @@ There is no supported CLI entrypoint. Do not use or reintroduce `ocr-validate`.
 
 ## Project purpose
 
-This repository provides a Flask JSON API for China Unicom mobile App order screenshots/photos. It accepts one uploaded image, runs local PaddleOCR models on CPU, extracts four business fields (`号码`, `日期`, `姓名`, `套餐信息`), and returns wrapped JSON while persisting per-request artifacts for inspection.
+This repository provides a Flask JSON API for China Unicom mobile App order screenshots/photos. It accepts one uploaded image, runs local PaddleOCR models on CPU, extracts four business fields (`号码`, `日期`, `姓名`, `套餐信息`), and returns wrapped JSON with a base64-encoded label image inline. No artifacts are persisted to disk.
 
 ## High-level architecture
 
 The application uses a small Flask MVC-style layout under `app/`:
 
-1. `app/__init__.py` creates the Flask app, loads config, registers the v1 API blueprint, and wires OCR provider/repository dependencies.
-2. `app/controllers/api/v1/ocr_controller.py` exposes `POST /api/v1/ocr/orders` and `GET /api/v1/openapi.json`.
-3. `app/services/ocr_service.py` orchestrates single-upload OCR: save upload, run orientation candidates, normalize OCR results, extract fields, apply quality checks, save report and label image, and return API content.
+1. `app/__init__.py` creates the Flask app, loads config, registers the v1 API blueprint, and wires the OCR provider dependency.
+2. `app/controllers/api/v1/ocr_controller.py` exposes `POST /api/v1/ocr/orders` and `GET /api/v1/openapi.json`. It reads the optional `label_image` query parameter and forwards it to the service.
+3. `app/services/ocr_service.py` orchestrates single-upload OCR: save the upload to a temp file, run orientation candidates, normalize OCR results, extract fields, apply quality checks, render a base64 label image (unless `label_image=false`), and return API content. The service is stateless and writes nothing to disk after the request.
 4. `app/services/field_extraction.py`, `field_quality.py`, `image_service.py`, `orientation_service.py`, `paddle_ocr_provider.py`, and `visualization_service.py` contain pure OCR/domain behavior and PaddleOCR integration.
 5. `app/models/ocr_models.py` contains stable OCR and field result data structures.
-6. `app/repositories/ocr_result_repository.py` persists request workspaces under `outputs/requests`.
-7. `app/schemas/ocr_schema.py` and `app/views/json_response.py` define request/OpenAPI helpers and the `{code, content, message}` JSON envelope.
+6. `app/schemas/ocr_schema.py` and `app/views/json_response.py` define request/OpenAPI helpers and the `{code, content, message}` JSON envelope.
 
-## Data, models, and outputs
-
-Default paths and limits:
+## Models and limits
 
 - Detection model: `models/PP-OCRv6_small_det_infer`
 - Recognition model: `models/PP-OCRv6_medium_rec`
-- Request artifacts: `outputs/requests/<request-id>/`
-- Original upload: `outputs/requests/<request-id>/original/<filename>`
-- Label image: `outputs/requests/<request-id>/label_img/<filename>`
-- Report JSON: `outputs/requests/<request-id>/report.json`
 - Upload size limit: 20 MiB
 
 PaddleOCR model directories must contain `inference.yml`; the code reads `Global.model_name` from that file instead of hard-coding model names.
 
-Each saved report includes the request id, original image path, elapsed time, selected rotation, field quality, compact orientation-candidate summaries, extracted fields, label image path, artifacts, and raw normalized OCR items.
+Each response includes the request id, selected rotation, field quality, extracted fields, raw normalized OCR items, and (unless `label_image=false`) a base64-encoded label image. Uploaded images are processed in a temporary directory that is removed when the request completes.
 
 ## Current caveats
 
