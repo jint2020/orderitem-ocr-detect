@@ -25,11 +25,17 @@ class PaddleOcrProvider:
         rec_model_dir: Path,
         doc_orientation_model_dir: Path,
         enable_mkldnn: bool = False,
+        cpu_threads: int | None = None,
+        det_limit_side_len: int | None = None,
+        det_limit_type: str | None = None,
     ):
         self.det_model_dir = det_model_dir
         self.rec_model_dir = rec_model_dir
         self.doc_orientation_model_dir = doc_orientation_model_dir
         self.enable_mkldnn = enable_mkldnn
+        self.cpu_threads = cpu_threads
+        self.det_limit_side_len = det_limit_side_len
+        self.det_limit_type = det_limit_type
         self._ocr_plain: Any | None = None
         self._ocr_classifier: Any | None = None
 
@@ -45,6 +51,9 @@ class PaddleOcrProvider:
                     self.doc_orientation_model_dir,
                     use_doc_orientation_classify=True,
                     enable_mkldnn=self.enable_mkldnn,
+                    cpu_threads=self.cpu_threads,
+                    det_limit_side_len=self.det_limit_side_len,
+                    det_limit_type=self.det_limit_type,
                 )
             return self._ocr_classifier
         if self._ocr_plain is None:
@@ -54,6 +63,9 @@ class PaddleOcrProvider:
                 self.doc_orientation_model_dir,
                 use_doc_orientation_classify=False,
                 enable_mkldnn=self.enable_mkldnn,
+                cpu_threads=self.cpu_threads,
+                det_limit_side_len=self.det_limit_side_len,
+                det_limit_type=self.det_limit_type,
             )
         return self._ocr_plain
 
@@ -65,6 +77,9 @@ def build_paddleocr(
     *,
     use_doc_orientation_classify: bool,
     enable_mkldnn: bool = False,
+    cpu_threads: int | None = None,
+    det_limit_side_len: int | None = None,
+    det_limit_type: str | None = None,
 ):
     from paddleocr import PaddleOCR
 
@@ -83,6 +98,14 @@ def build_paddleocr(
         # 3.3.1 上不兼容，关闭后走通用 CPU 算子（run_mode="paddle"）。见 app/config.py。
         enable_mkldnn=enable_mkldnn,
     )
+    if cpu_threads is not None:
+        kwargs["cpu_threads"] = cpu_threads
+    # 留空时沿用 PaddleOCR pipeline 配置（limit_side_len=64 / limit_type=min，
+    # 大图几乎不缩小）。设成 960 / max 可显著降低检测耗时。见 app/config.py。
+    if det_limit_side_len is not None:
+        kwargs["text_det_limit_side_len"] = det_limit_side_len
+    if det_limit_type is not None:
+        kwargs["text_det_limit_type"] = det_limit_type
     if use_doc_orientation_classify:
         kwargs.update(
             doc_orientation_classify_model_name=read_model_name(doc_orientation_model_dir),

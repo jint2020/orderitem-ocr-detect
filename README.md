@@ -122,6 +122,9 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
 | `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
 | `ENABLE_MKLDNN` | `false` | oneDNN acceleration. PaddleOCR enables it by default, but paddlepaddle 3.3.1's oneDNN + PIR executor fails on PP-OCRv6 detection models, so it is disabled here. |
+| `CPU_THREADS` | `cores / 2` | Inference threads per pass. Keep `GUNICORN_WORKERS × CPU_THREADS ≈ cores`. |
+| `TEXT_DET_LIMIT_SIDE_LEN` | unset | Detection input scaling. Unset keeps PaddleOCR's pipeline default (`64` / `min`, i.e. large images are barely downscaled). Set to `960` with `TEXT_DET_LIMIT_TYPE=max` to cap the long side — usually the largest speedup, at the cost of possibly missing small text. |
+| `TEXT_DET_LIMIT_TYPE` | unset | `max` or `min`; see above. |
 
 Notes:
 

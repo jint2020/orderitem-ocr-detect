@@ -34,4 +34,7 @@ def _build_provider(app: Flask):
         app.config["RECOGNITION_MODEL_DIR"],
         app.config["DOC_ORIENTATION_MODEL_DIR"],
         app.config["ENABLE_MKLDNN"],
+        app.config["CPU_THREADS"],
+        app.config["TEXT_DET_LIMIT_SIDE_LEN"],
+        app.config["TEXT_DET_LIMIT_TYPE"],
     )
