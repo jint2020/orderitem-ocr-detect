@@ -11,6 +11,7 @@ FROM --platform=linux/amd64 python:3.12-slim
 #     PIP_INDEX_URL=https://mirrors.tencentyun.com/pypi/simple
 ARG APT_MIRROR_HOST=""
 ARG PIP_INDEX_URL="https://pypi.org/simple"
+ARG PYPI_FILES_BASE=""
 
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     UV_DEFAULT_INDEX=${PIP_INDEX_URL} \
@@ -45,7 +46,15 @@ WORKDIR /app
 
 # 先装依赖（利用层缓存：仅 pyproject/uv.lock 变化才重装）
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev \
+
+# 这一层要下约 400 MB（paddlepaddle 186 MB、opencv-contrib-python 143 MB 等）。
+# uv.lock 锁定的是 files.pythonhosted.org 的绝对 URL，`uv sync --frozen` 按 URL
+# 直接下载，PIP_INDEX_URL / UV_DEFAULT_INDEX 对它无效，必须改写主机名才能走镜像源。
+# 只换主机名不动 sha256，uv 仍会校验哈希，镜像内容不一致会直接构建失败。
+RUN if [ -n "$PYPI_FILES_BASE" ]; then \
+        sed -i "s|https://files.pythonhosted.org|$PYPI_FILES_BASE|g" uv.lock; \
+    fi \
+    && uv sync --frozen --no-install-project --no-dev \
     && uv pip install gunicorn==23.0.0
 
 # 应用代码

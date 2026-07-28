@@ -6,6 +6,7 @@ services:
         # 国内构建加速，见 .env.example；留空则走官方源。
         APT_MIRROR_HOST: ${APT_MIRROR_HOST:-}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PYPI_FILES_BASE: ${PYPI_FILES_BASE:-}
     image: unicom-ocr-detect:latest
     platform: linux/amd64
     container_name: unicom-ocr

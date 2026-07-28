@@ -83,22 +83,36 @@ docker compose up --build -d
 
 ### 国内构建加速（强烈建议）
 
-境内服务器直连 `deb.debian.org` 和 `pypi.org` 会非常慢，构建常卡在 `apt-get update`。
-在 `.env` 中设置镜像源（腾讯云机器用内网源最快，免流量）：
+境内服务器直连 `deb.debian.org` 和 `pypi.org` 会非常慢：`apt-get update` 要拉近 10 MB 包索引，
+依赖层要下约 400 MB wheel（paddlepaddle 186 MB、opencv-contrib-python 143 MB、pillow 45 MB 等）。
+
+在 `.env` 中设置三个镜像源变量（腾讯云机器用内网源最快，免流量）：
 
 ```bash
 APT_MIRROR_HOST=mirrors.tencentyun.com
 PIP_INDEX_URL=https://mirrors.tencentyun.com/pypi/simple
+PYPI_FILES_BASE=https://mirrors.tencentyun.com/pypi
 ```
 
-阿里云用 `mirrors.cloud.aliyuncs.com`；非云厂商机器可用 `mirrors.tuna.tsinghua.edu.cn`
-（pip 索引为 `https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple`）。设置后重新构建：
+三者分工不同，**必须一起设置**：
+
+| 变量 | 作用的构建层 |
+|---|---|
+| `APT_MIRROR_HOST` | `apt-get update && apt-get install`（系统库） |
+| `PIP_INDEX_URL` | `pip install uv`、`uv pip install gunicorn` |
+| `PYPI_FILES_BASE` | `uv sync --frozen` —— 约 400 MB，构建耗时的大头 |
+
+`PYPI_FILES_BASE` 单独存在是因为 `uv.lock` 锁定的是 `files.pythonhosted.org` 的**绝对 URL**，
+`uv sync --frozen` 按 URL 直接下载，`PIP_INDEX_URL` / `UV_DEFAULT_INDEX` 对它无效，必须改写主机名。
+改写只动主机名、不动 `sha256`，uv 仍会校验哈希，镜像内容不一致会直接构建失败。
+
+其他镜像源见 `.env.example`（阿里云、清华）。设置后重新构建：
 
 ```bash
-docker compose build --no-cache && docker compose up -d
+docker compose build && docker compose up -d
 ```
 
-留空这两个变量则走官方源，行为与之前一致。
+三个变量都留空则走官方源，行为与之前一致。
 
 查看状态与日志：
 
