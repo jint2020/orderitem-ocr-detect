@@ -93,7 +93,7 @@ The service ships as a stateless container. Models are bind-mounted read-only; n
 Prerequisites:
 
 - Docker with Compose.
-- PaddleOCR models downloaded under `models/` (see `models/README.md`). The service expects `models/PP-OCRv6_small_det_infer` and `models/PP-OCRv6_medium_rec`, each containing `inference.yml`.
+- PaddleOCR models downloaded under `models/` (see `models/README.md`). The service expects `models/PP-OCRv6_small_det_infer`, `models/PP-OCRv6_medium_rec`, and `models/PP-LCNet_x1_0_doc_ori`, each containing `inference.yml`.
 - The image targets `linux/amd64` because PaddlePaddle only publishes x86_64 Linux wheels. On Apple Silicon, enable Rosetta for x86/amd64 emulation in Docker Desktop (Settings -> "Use Rosetta for x86_64/amd64 emulation") for acceptable performance.
 
 Build and run:
@@ -101,6 +101,8 @@ Build and run:
 ```bash
 docker compose up --build -d
 ```
+
+For a step-by-step Ubuntu Server 24.04 LTS walkthrough (model download, `.env`, firewall, troubleshooting), see [docs/deploy-ubuntu.md](docs/deploy-ubuntu.md).
 
 The API is then available at `http://localhost:8080` (override the host port with `OCR_PORT`):
 
@@ -117,6 +119,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | `GUNICORN_WORKERS` | `2` | Gunicorn workers; each loads its own PaddleOCR model on first request |
 | `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | Detection model directory |
 | `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
+| `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
 | `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
 
 Notes:
