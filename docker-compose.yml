@@ -21,6 +21,10 @@ services:
       MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-20971520}
       # oneDNN 与 PP-OCRv6 在 paddlepaddle 3.3.1 上不兼容，默认关闭。
       ENABLE_MKLDNN: ${ENABLE_MKLDNN:-false}
+      # 性能相关，见 .env.example。留空使用 app/config.py 的默认值。
+      CPU_THREADS: ${CPU_THREADS:-}
+      TEXT_DET_LIMIT_SIDE_LEN: ${TEXT_DET_LIMIT_SIDE_LEN:-}
+      TEXT_DET_LIMIT_TYPE: ${TEXT_DET_LIMIT_TYPE:-}
     volumes:
       # 模型只读挂载；需先按 models/README.md 下载到本地 models/
       - ./models:/app/models:ro
