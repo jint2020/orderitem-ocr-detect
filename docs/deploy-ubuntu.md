@@ -31,12 +31,17 @@ cd ~/orderitem-ocr-detect
 
 ## 2. 下载模型
 
-模型不打包进镜像，必须先下载到宿主机 `models/` 目录（详见 `models/README.md`）：
+模型不打包进镜像，必须先下载到宿主机 `models/` 目录（详见 `models/README.md`）。
+
+注意检测模型的 modelscope 仓库名是 `PP-OCRv6_small_det`，而配置默认的本地目录名带 `_infer` 后缀，clone 后需要改名：
 
 ```bash
 cd models
 git lfs install
-git clone https://www.modelscope.cn/PaddlePaddle/PP-OCRv6_small_det_infer.git
+
+git clone https://www.modelscope.cn/PaddlePaddle/PP-OCRv6_small_det.git
+mv PP-OCRv6_small_det PP-OCRv6_small_det_infer
+
 git clone https://www.modelscope.cn/PaddlePaddle/PP-OCRv6_medium_rec.git
 git clone https://www.modelscope.cn/PaddlePaddle/PP-LCNet_x1_0_doc_ori.git
 cd ..
@@ -48,6 +53,9 @@ ls models/PP-OCRv6_small_det_infer/inference.yml \
 ```
 
 若权重文件只有几百字节，说明 lfs 未生效，进入对应目录执行 `git lfs pull`。
+
+不想改目录名时，保留 `PP-OCRv6_small_det` 并在 `.env` 中设置
+`DETECTION_MODEL_DIR=models/PP-OCRv6_small_det` 即可。
 
 ## 3. 配置
 
@@ -61,6 +69,9 @@ cp .env.example .env
 |---|---|---|
 | `OCR_PORT` | `8080` | 宿主机端口，映射到容器 5000 |
 | `GUNICORN_WORKERS` | `2` | worker 数，CPU 推理建议不超过 `核数 / 2` |
+| `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | 检测模型目录（容器内相对 `/app`） |
+| `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | 识别模型目录 |
+| `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | 方向分类模型目录 |
 
 ## 4. 构建并启动
 

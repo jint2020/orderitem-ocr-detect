@@ -8,11 +8,11 @@ services:
       - "${OCR_PORT:-8080}:5000"
     environment:
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
-      # 可选覆盖（默认值见 app/config.py）：
-      # DETECTION_MODEL_DIR: models/PP-OCRv6_small_det_infer
-      # RECOGNITION_MODEL_DIR: models/PP-OCRv6_medium_rec
-      # DOC_ORIENTATION_MODEL_DIR: models/PP-LCNet_x1_0_doc_ori
-      # MAX_CONTENT_LENGTH: "20971520"
+      # 模型目录（容器内相对 /app）。默认值与 app/config.py 一致，可在 .env 覆盖。
+      DETECTION_MODEL_DIR: ${DETECTION_MODEL_DIR:-models/PP-OCRv6_small_det_infer}
+      RECOGNITION_MODEL_DIR: ${RECOGNITION_MODEL_DIR:-models/PP-OCRv6_medium_rec}
+      DOC_ORIENTATION_MODEL_DIR: ${DOC_ORIENTATION_MODEL_DIR:-models/PP-LCNet_x1_0_doc_ori}
+      MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-20971520}
     volumes:
       # 模型只读挂载；需先按 models/README.md 下载到本地 models/
       - ./models:/app/models:ro

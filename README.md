@@ -93,7 +93,7 @@ The service ships as a stateless container. Models are bind-mounted read-only; n
 Prerequisites:
 
 - Docker with Compose.
-- PaddleOCR models downloaded under `models/` (see `models/README.md`). The service expects `models/PP-OCRv6_small_det_infer`, `models/PP-OCRv6_medium_rec`, and `models/PP-LCNet_x1_0_doc_ori`, each containing `inference.yml`.
+- PaddleOCR models downloaded under `models/` (see `models/README.md`). The service expects `models/PP-OCRv6_small_det_infer`, `models/PP-OCRv6_medium_rec`, and `models/PP-LCNet_x1_0_doc_ori`, each containing `inference.yml`. Note that the detection model's ModelScope repository is named `PP-OCRv6_small_det` — rename the clone to match the expected directory, or override `DETECTION_MODEL_DIR`.
 - The image targets `linux/amd64` because PaddlePaddle only publishes x86_64 Linux wheels. On Apple Silicon, enable Rosetta for x86/amd64 emulation in Docker Desktop (Settings -> "Use Rosetta for x86_64/amd64 emulation") for acceptable performance.
 
 Build and run:
