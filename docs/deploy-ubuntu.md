@@ -81,6 +81,25 @@ docker compose up --build -d
 
 首次构建需要下载 paddlepaddle 等依赖，耗时较长（视网络 5–20 分钟）。
 
+### 国内构建加速（强烈建议）
+
+境内服务器直连 `deb.debian.org` 和 `pypi.org` 会非常慢，构建常卡在 `apt-get update`。
+在 `.env` 中设置镜像源（腾讯云机器用内网源最快，免流量）：
+
+```bash
+APT_MIRROR_HOST=mirrors.tencentyun.com
+PIP_INDEX_URL=https://mirrors.tencentyun.com/pypi/simple
+```
+
+阿里云用 `mirrors.cloud.aliyuncs.com`；非云厂商机器可用 `mirrors.tuna.tsinghua.edu.cn`
+（pip 索引为 `https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple`）。设置后重新构建：
+
+```bash
+docker compose build --no-cache && docker compose up -d
+```
+
+留空这两个变量则走官方源，行为与之前一致。
+
 查看状态与日志：
 
 ```bash

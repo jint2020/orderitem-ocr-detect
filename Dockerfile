@@ -6,7 +6,15 @@
 
 FROM --platform=linux/amd64 python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 \
+# 可选加速：国内构建时把 apt / pip 换成镜像源。默认空值 = 走官方源，行为不变。
+# 例：APT_MIRROR_HOST=mirrors.tencentyun.com（腾讯云内网）
+#     PIP_INDEX_URL=https://mirrors.tencentyun.com/pypi/simple
+ARG APT_MIRROR_HOST=""
+ARG PIP_INDEX_URL="https://pypi.org/simple"
+
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    UV_DEFAULT_INDEX=${PIP_INDEX_URL} \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     UV_LINK_MODE=copy \
@@ -16,7 +24,12 @@ ENV PYTHONUNBUFFERED=1 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 # PaddlePaddle / PaddleOCR / OpenCV 运行所需的系统库
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Debian 13 (trixie) 使用 deb822 格式的 /etc/apt/sources.list.d/debian.sources
+RUN if [ -n "$APT_MIRROR_HOST" ]; then \
+        sed -i "s|deb.debian.org|$APT_MIRROR_HOST|g; s|security.debian.org|$APT_MIRROR_HOST|g" \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libgl1 \
         libglib2.0-0 \
