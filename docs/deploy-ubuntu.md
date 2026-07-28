@@ -168,6 +168,36 @@ docker compose logs --tail=200 ocr   # 查看最近日志
 docker compose exec ocr ls /app/models
 ```
 
+注意检测模型目录名：modelscope 仓库叫 `PP-OCRv6_small_det`，而默认配置找的是
+`PP-OCRv6_small_det_infer`，clone 后未改名就会报这个错。
+
+**识别报 500 `ocr processing failed`**：OCR 执行阶段出错，原始异常未记入日志。手动复现拿堆栈：
+
+```bash
+docker compose cp <你的图片>.jpg ocr:/tmp/probe.jpg
+docker compose exec -T ocr python -u - <<'PY'
+import traceback
+from pathlib import Path
+from app.config import (
+    DETECTION_MODEL_DIR, RECOGNITION_MODEL_DIR, DOC_ORIENTATION_MODEL_DIR, ENABLE_MKLDNN,
+)
+from app.services.paddle_ocr_provider import PaddleOcrProvider
+
+prov = PaddleOcrProvider(
+    DETECTION_MODEL_DIR, RECOGNITION_MODEL_DIR, DOC_ORIENTATION_MODEL_DIR, ENABLE_MKLDNN,
+)
+try:
+    print('OK, results:', len(prov.predict(Path('/tmp/probe.jpg'), use_classifier=False)))
+except Exception:
+    traceback.print_exc()
+PY
+```
+
+若堆栈是 `NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support
+[pir::ArrayAttribute<pir::DoubleAttribute>]`，说明启用了 oneDNN —— paddlepaddle 3.3.1 的
+oneDNN + PIR 执行器与 PP-OCRv6 检测模型不兼容。本项目默认已关闭（`ENABLE_MKLDNN=false`），
+确认 `.env` 里没有把它设成 `true`。
+
 **第一次请求很慢 / 504**：PaddleOCR 懒加载，首个请求包含模型初始化。gunicorn 超时已设为 300s；若前面挂了 Nginx，也要把 `proxy_read_timeout` 调大。
 
 **并发下 CPU 打满、响应变慢**：OCR 是 CPU 密集型。降低 `GUNICORN_WORKERS`，或在 compose 的 `environment` 中限制线程数避免超额订阅：

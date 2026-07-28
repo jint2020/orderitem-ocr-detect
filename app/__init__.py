@@ -33,4 +33,5 @@ def _build_provider(app: Flask):
         app.config["DETECTION_MODEL_DIR"],
         app.config["RECOGNITION_MODEL_DIR"],
         app.config["DOC_ORIENTATION_MODEL_DIR"],
+        app.config["ENABLE_MKLDNN"],
     )

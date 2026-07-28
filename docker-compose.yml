@@ -19,6 +19,8 @@ services:
       RECOGNITION_MODEL_DIR: ${RECOGNITION_MODEL_DIR:-models/PP-OCRv6_medium_rec}
       DOC_ORIENTATION_MODEL_DIR: ${DOC_ORIENTATION_MODEL_DIR:-models/PP-LCNet_x1_0_doc_ori}
       MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-20971520}
+      # oneDNN 与 PP-OCRv6 在 paddlepaddle 3.3.1 上不兼容，默认关闭。
+      ENABLE_MKLDNN: ${ENABLE_MKLDNN:-false}
     volumes:
       # 模型只读挂载；需先按 models/README.md 下载到本地 models/
       - ./models:/app/models:ro
