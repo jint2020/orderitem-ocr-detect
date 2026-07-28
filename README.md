@@ -121,6 +121,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
 | `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
 | `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
+| `ENABLE_MKLDNN` | `false` | oneDNN acceleration. PaddleOCR enables it by default, but paddlepaddle 3.3.1's oneDNN + PIR executor fails on PP-OCRv6 detection models, so it is disabled here. |
 
 Notes:
 

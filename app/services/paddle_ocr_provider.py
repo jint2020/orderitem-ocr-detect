@@ -24,10 +24,12 @@ class PaddleOcrProvider:
         det_model_dir: Path,
         rec_model_dir: Path,
         doc_orientation_model_dir: Path,
+        enable_mkldnn: bool = False,
     ):
         self.det_model_dir = det_model_dir
         self.rec_model_dir = rec_model_dir
         self.doc_orientation_model_dir = doc_orientation_model_dir
+        self.enable_mkldnn = enable_mkldnn
         self._ocr_plain: Any | None = None
         self._ocr_classifier: Any | None = None
 
@@ -42,6 +44,7 @@ class PaddleOcrProvider:
                     self.rec_model_dir,
                     self.doc_orientation_model_dir,
                     use_doc_orientation_classify=True,
+                    enable_mkldnn=self.enable_mkldnn,
                 )
             return self._ocr_classifier
         if self._ocr_plain is None:
@@ -50,6 +53,7 @@ class PaddleOcrProvider:
                 self.rec_model_dir,
                 self.doc_orientation_model_dir,
                 use_doc_orientation_classify=False,
+                enable_mkldnn=self.enable_mkldnn,
             )
         return self._ocr_plain
 
@@ -60,6 +64,7 @@ def build_paddleocr(
     doc_orientation_model_dir: Path,
     *,
     use_doc_orientation_classify: bool,
+    enable_mkldnn: bool = False,
 ):
     from paddleocr import PaddleOCR
 
@@ -74,6 +79,9 @@ def build_paddleocr(
         use_doc_unwarping=False,
         use_textline_orientation=False,
         device="cpu",
+        # PaddleOCR 默认 enable_mkldnn=True；oneDNN 与 PP-OCRv6 在 paddlepaddle
+        # 3.3.1 上不兼容，关闭后走通用 CPU 算子（run_mode="paddle"）。见 app/config.py。
+        enable_mkldnn=enable_mkldnn,
     )
     if use_doc_orientation_classify:
         kwargs.update(
