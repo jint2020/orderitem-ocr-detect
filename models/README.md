@@ -50,6 +50,39 @@ ls models/PP-OCRv6_small_det_infer/inference.yml \
 
 三个文件都存在才算下载完整。若权重文件大小只有一两百字节，说明 lfs 没有正确拉取，在对应目录执行 `git lfs pull` 补齐。
 
+## 转换为 ONNX（可选，用于 `INFERENCE_ENGINE=onnxruntime`）
+
+paddlepaddle 3.3.1 的 oneDNN 与 PP-OCRv6 不兼容（见 `app/config.py` 的 `ENABLE_MKLDNN`），
+paddle 后端只能走未加速的通用 CPU 算子。改用 ONNX Runtime 可绕开该后端。
+
+模型目录约定：只要目录里同时有 `inference.yml` 和 **`inference.onnx`**，服务就能用；
+转换可以直接输出到原目录，无需改动 `*_MODEL_DIR` 配置。
+
+`./models` 在 compose 里是只读挂载，用一次性容器以读写方式挂载来转换：
+
+```bash
+cd <项目根目录>
+docker run --rm -v "$PWD/models:/models" unicom-ocr-detect:latest sh -c '
+  uv pip install paddle2onnx
+  for m in PP-OCRv6_small_det_infer PP-OCRv6_medium_rec PP-LCNet_x1_0_doc_ori; do
+    paddlex --paddle2onnx --paddle_model_dir /models/$m \
+            --onnx_model_dir /models/$m --opset_version 14
+  done
+'
+
+ls -l models/*/inference.onnx
+```
+
+`--opset_version` 默认是 `7`，太低会用不上 ONNX Runtime 的多数图优化，务必显式指定 14 或更高。
+
+转换完成后在 `.env` 中启用：
+
+```bash
+INFERENCE_ENGINE=onnxruntime
+```
+
+`inference.onnx` 与原 paddle 权重可以共存，切回 `INFERENCE_ENGINE=paddle` 无需删除文件。
+
 ## 确认仓库名是否有效
 
 modelscope 仓库名如有变化，可用如下方式探测（`200` 表示存在）：
