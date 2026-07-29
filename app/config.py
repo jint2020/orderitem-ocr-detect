@@ -20,12 +20,15 @@ ENABLE_MKLDNN = os.environ.get("ENABLE_MKLDNN", "false").strip().lower() in {
     "on",
 }
 
-# PIR 新执行器开关。ENABLE_MKLDNN 的崩溃出在 PIR 执行器的 oneDNN 指令路径
-# （new_executor/instruction/onednn/onednn_instruction.cc:116），关掉 PIR 改走旧执行器，
-# 有机会在保住 oneDNN 加速的同时避开该 bug：
-#     ENABLE_MKLDNN=true
-#     ENABLE_NEW_IR=false
-# 默认 true，与 paddle 自身默认一致。
+# PIR 开关。
+#
+# 已实测：ENABLE_MKLDNN=true + ENABLE_NEW_IR=false 仍然抛同一个
+# NotImplementedError，**不能**用来恢复 oneDNN。原因是 paddlex 的
+# runners/paddle_static/runner.py 在关掉 PIR 之后仍然无条件调用
+# config.enable_new_executor()，而崩溃正发生在新执行器的 oneDNN 指令路径
+# （new_executor/instruction/onednn/onednn_instruction.cc:116），没有配置项能关掉它。
+#
+# 该开关保留仅为便于在其他 paddle 版本上复测，默认 true 与 paddle 自身默认一致。
 ENABLE_NEW_IR = os.environ.get("ENABLE_NEW_IR", "true").strip().lower() not in {
     "0",
     "false",
