@@ -20,6 +20,19 @@ ENABLE_MKLDNN = os.environ.get("ENABLE_MKLDNN", "false").strip().lower() in {
     "on",
 }
 
+# PIR 新执行器开关。ENABLE_MKLDNN 的崩溃出在 PIR 执行器的 oneDNN 指令路径
+# （new_executor/instruction/onednn/onednn_instruction.cc:116），关掉 PIR 改走旧执行器，
+# 有机会在保住 oneDNN 加速的同时避开该 bug：
+#     ENABLE_MKLDNN=true
+#     ENABLE_NEW_IR=false
+# 默认 true，与 paddle 自身默认一致。
+ENABLE_NEW_IR = os.environ.get("ENABLE_NEW_IR", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+
 # PaddleOCR 默认 cpu_threads=10，与 gunicorn 多 worker 叠加后会严重超额订阅 CPU。
 # 默认取 核数/2，配合默认的 2 个 worker 恰好用满核数。改 GUNICORN_WORKERS 时
 # 应同步调整，使 GUNICORN_WORKERS × CPU_THREADS ≈ 核数。
