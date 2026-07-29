@@ -200,6 +200,19 @@ oneDNN + PIR 执行器与 PP-OCRv6 检测模型不兼容。本项目默认已关
 
 **第一次请求很慢 / 504**：PaddleOCR 懒加载，首个请求包含模型初始化。gunicorn 超时已设为 300s；若前面挂了 Nginx，也要把 `proxy_read_timeout` 调大。
 
+**单次识别耗时过长**：默认的 paddle 后端因 oneDNN 不可用（见 `ENABLE_MKLDNN`）只能走未加速的
+通用 CPU 算子。4 核机器实测（1279×1706 图片，47 个文本框）：
+
+| 配置 | 单次耗时 |
+|---|---|
+| paddle 后端（默认） | 21.3s |
+| paddle + `CPU_THREADS=4` | 21.1s |
+| paddle + 长边缩到 960 | 19.8s |
+| **`INFERENCE_ENGINE=onnxruntime`** | **4.2s** |
+
+调参手段合计只有约 8% 收益，换 ONNX Runtime 才是数量级的差别，且字段质量不变。
+转换步骤见 `models/README.md`。
+
 **并发下 CPU 打满、响应变慢**：OCR 是 CPU 密集型。降低 `GUNICORN_WORKERS`，或在 compose 的 `environment` 中限制线程数避免超额订阅：
 
 ```yaml

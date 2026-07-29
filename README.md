@@ -121,7 +121,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
 | `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
 | `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
-| `INFERENCE_ENGINE` | `paddle` | Inference backend: `paddle` or `onnxruntime`. ONNX Runtime bypasses the paddle backend (whose oneDNN path is unusable, see below); requires `inference.onnx` in each model directory — see `models/README.md` for conversion. |
+| `INFERENCE_ENGINE` | `paddle` | Inference backend: `paddle` or `onnxruntime`. ONNX Runtime bypasses the paddle backend (whose oneDNN path is unusable, see below); requires `inference.onnx` in each model directory — see `models/README.md` for conversion. Measured on a 4-core CPU: **21.3s -> 4.2s** per request with identical field quality. Default stays `paddle` because a deployment without converted models cannot run this backend. |
 | `ENABLE_MKLDNN` | `false` | oneDNN acceleration. PaddleOCR enables it by default, but paddlepaddle 3.3.1's oneDNN + PIR executor fails on PP-OCRv6 detection models, so it is disabled here. |
 | `ENABLE_NEW_IR` | `true` | PIR toggle. Measured: `ENABLE_MKLDNN=true` + `ENABLE_NEW_IR=false` still crashes — paddlex calls `config.enable_new_executor()` unconditionally, and the crash lives in that executor. Kept only for re-testing on other paddle versions. |
 | `CPU_THREADS` | `cores / 2` | Inference threads per pass. Keep `GUNICORN_WORKERS × CPU_THREADS ≈ cores`. |
