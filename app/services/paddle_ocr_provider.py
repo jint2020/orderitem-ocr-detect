@@ -28,6 +28,7 @@ class PaddleOcrProvider:
         cpu_threads: int | None = None,
         det_limit_side_len: int | None = None,
         det_limit_type: str | None = None,
+        enable_new_ir: bool = True,
     ):
         self.det_model_dir = det_model_dir
         self.rec_model_dir = rec_model_dir
@@ -36,6 +37,7 @@ class PaddleOcrProvider:
         self.cpu_threads = cpu_threads
         self.det_limit_side_len = det_limit_side_len
         self.det_limit_type = det_limit_type
+        self.enable_new_ir = enable_new_ir
         self._ocr_plain: Any | None = None
         self._ocr_classifier: Any | None = None
 
@@ -54,6 +56,7 @@ class PaddleOcrProvider:
                     cpu_threads=self.cpu_threads,
                     det_limit_side_len=self.det_limit_side_len,
                     det_limit_type=self.det_limit_type,
+                    enable_new_ir=self.enable_new_ir,
                 )
             return self._ocr_classifier
         if self._ocr_plain is None:
@@ -66,6 +69,7 @@ class PaddleOcrProvider:
                 cpu_threads=self.cpu_threads,
                 det_limit_side_len=self.det_limit_side_len,
                 det_limit_type=self.det_limit_type,
+                enable_new_ir=self.enable_new_ir,
             )
         return self._ocr_plain
 
@@ -80,6 +84,7 @@ def build_paddleocr(
     cpu_threads: int | None = None,
     det_limit_side_len: int | None = None,
     det_limit_type: str | None = None,
+    enable_new_ir: bool = True,
 ):
     from paddleocr import PaddleOCR
 
@@ -106,6 +111,20 @@ def build_paddleocr(
         kwargs["text_det_limit_side_len"] = det_limit_side_len
     if det_limit_type is not None:
         kwargs["text_det_limit_type"] = det_limit_type
+    if not enable_new_ir:
+        # enable_new_ir 不是 PaddleOCR 的公开参数，只能经 engine_config 传到
+        # paddle_static runner（runner.py 的 CPU 分支读 self._config["enable_new_ir"]）。
+        # 注意 PaddleOCR 收到 engine_config 后会整个替换掉它自己按 enable_mkldnn /
+        # cpu_threads 生成的配置（paddleocr/_common_args.py:117），所以这里必须把
+        # run_mode 和 cpu_threads 一并写全，否则那两项会被静默丢弃。
+        engine_config: dict[str, Any] = {
+            "run_mode": "mkldnn" if enable_mkldnn else "paddle",
+            "enable_new_ir": False,
+            "cpu_threads": cpu_threads if cpu_threads is not None else 10,
+        }
+        if enable_mkldnn:
+            engine_config["mkldnn_cache_capacity"] = 10
+        kwargs["engine_config"] = {"paddle_static": engine_config}
     if use_doc_orientation_classify:
         kwargs.update(
             doc_orientation_classify_model_name=read_model_name(doc_orientation_model_dir),
