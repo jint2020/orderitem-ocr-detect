@@ -63,7 +63,7 @@ paddle 后端只能走未加速的通用 CPU 算子。改用 ONNX Runtime 可绕
 ```bash
 cd <项目根目录>
 docker run --rm -v "$PWD/models:/models" unicom-ocr-detect:latest sh -c '
-  uv pip install paddle2onnx
+  uv pip install paddle2onnx onnx_graphsurgeon
   for m in PP-OCRv6_small_det_infer PP-OCRv6_medium_rec PP-LCNet_x1_0_doc_ori; do
     paddlex --paddle2onnx --paddle_model_dir /models/$m \
             --onnx_model_dir /models/$m --opset_version 14
@@ -73,7 +73,13 @@ docker run --rm -v "$PWD/models:/models" unicom-ocr-detect:latest sh -c '
 ls -l models/*/inference.onnx
 ```
 
-`--opset_version` 默认是 `7`，太低会用不上 ONNX Runtime 的多数图优化，务必显式指定 14 或更高。
+两个参数都不能省：
+
+- `--opset_version` 默认是 `7`，太低会用不上 ONNX Runtime 的多数图优化，务必显式指定 14 或更高。
+- `onnx_graphsurgeon` 是常量折叠优化的依赖。缺了它转换仍会成功，但日志里会出现
+  `Constant folding pass failed. Skipping subsequent passes.`，生成的图少一层优化。
+  paddle2onnx 会尝试自动安装它，但镜像里的 venv 没有 `pip`（由 uv 创建），
+  自动安装必然失败，所以要在转换前显式装好。
 
 转换完成后在 `.env` 中启用：
 
