@@ -23,6 +23,8 @@ services:
       ENABLE_MKLDNN: ${ENABLE_MKLDNN:-false}
       # 关掉 PIR 新执行器可绕开上述 oneDNN bug，与 ENABLE_MKLDNN=true 配合使用。
       ENABLE_NEW_IR: ${ENABLE_NEW_IR:-true}
+      # 推理后端：paddle（默认）或 onnxruntime。见 .env.example。
+      INFERENCE_ENGINE: ${INFERENCE_ENGINE:-paddle}
       # 性能相关，见 .env.example。留空使用 app/config.py 的默认值。
       CPU_THREADS: ${CPU_THREADS:-}
       TEXT_DET_LIMIT_SIDE_LEN: ${TEXT_DET_LIMIT_SIDE_LEN:-}

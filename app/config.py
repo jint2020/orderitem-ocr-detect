@@ -8,6 +8,19 @@ DOC_ORIENTATION_MODEL_DIR = Path(
 )
 MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 20 * 1024 * 1024))
 
+# 推理后端。
+# - "paddle"（默认）：paddlepaddle 自带后端。因 oneDNN 不可用（见 ENABLE_MKLDNN），
+#   实际走的是未加速的通用 CPU 算子。
+# - "onnxruntime"：改用 ONNX Runtime，绕开 paddle 后端。需要每个模型目录里除
+#   inference.yml 外还有 inference.onnx，转换步骤见 models/README.md。
+SUPPORTED_INFERENCE_ENGINES = ("paddle", "onnxruntime")
+INFERENCE_ENGINE = os.environ.get("INFERENCE_ENGINE", "paddle").strip().lower()
+if INFERENCE_ENGINE not in SUPPORTED_INFERENCE_ENGINES:
+    raise ValueError(
+        f"Unsupported INFERENCE_ENGINE: {INFERENCE_ENGINE!r}. "
+        f"Supported values are: {', '.join(SUPPORTED_INFERENCE_ENGINES)}."
+    )
+
 # PaddleOCR 在 CPU 上默认启用 oneDNN(MKLDNN)。paddlepaddle 3.3.1 的 oneDNN + PIR
 # 执行器加载 PP-OCRv6 检测模型时会抛
 #   NotImplementedError: ConvertPirAttribute2RuntimeAttribute not support

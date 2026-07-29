@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "flask>=3.0.0",
+    "onnxruntime>=1.28.0",
     "paddleocr>=3.3.0",
     "paddlepaddle>=3.2.0",
 ]

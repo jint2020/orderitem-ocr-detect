@@ -38,4 +38,5 @@ def _build_provider(app: Flask):
         app.config["TEXT_DET_LIMIT_SIDE_LEN"],
         app.config["TEXT_DET_LIMIT_TYPE"],
         app.config["ENABLE_NEW_IR"],
+        app.config["INFERENCE_ENGINE"],
     )
