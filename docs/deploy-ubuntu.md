@@ -144,6 +144,41 @@ sudo ufw allow 8080/tcp
 
 只想本机/内网访问时，可把 `docker-compose.yml` 的端口映射改为 `"127.0.0.1:${OCR_PORT:-8080}:5000"`。
 
+## 6.0 开启 API Key 鉴权
+
+接口返回真实号码与姓名，**公网暴露前必须开启鉴权**。
+
+生成并配置：
+
+```bash
+cd ~/orderitem-ocr-detect
+echo "API_KEYS=$(openssl rand -hex 32)" >> .env
+docker compose up -d          # 改环境变量需 up -d，restart 不生效
+grep API_KEYS .env            # 把 key 交给调用方
+```
+
+调用方通过请求头传递：
+
+```bash
+curl -X POST -H "X-API-Key: <key>" \
+  -F "image=@order.jpg" \
+  "https://ocr.example.com:8443/api/v1/ocr/orders?label_image=false"
+```
+
+验证鉴权确实生效——不带 key 应返回 401：
+
+```bash
+curl -s -X POST -F "image=@order.jpg" \
+  "https://ocr.example.com:8443/api/v1/ocr/orders" | head -c 120
+# {"code":401,"content":{},"message":"invalid or missing api key"}
+```
+
+说明：
+
+- `API_KEYS` 支持逗号分隔配置多个，便于轮换：先加新 key，待调用方全部切换后再删旧 key。
+- `GET /api/v1/openapi.json` 不鉴权——它只返回静态 schema，且被容器健康检查使用。
+- 留空 `API_KEYS` 则完全不鉴权，仅适用于本地开发与内网隔离环境。
+
 ## 6.1 HTTPS（Nginx 反向代理 + Let's Encrypt）
 
 ### 前置条件

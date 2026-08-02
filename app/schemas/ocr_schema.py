@@ -36,9 +36,23 @@ def build_openapi_schema() -> dict[str, object]:
                             "description": "Wrapped OCR result with fields, field_quality, raw_ocr, selected_rotation_degrees, and label_image_base64 (omitted when label_image=false)"
                         },
                         "400": {"description": "Wrapped request error"},
+                        "401": {
+                            "description": "Wrapped auth error; only when API_KEYS is configured"
+                        },
                         "413": {"description": "Wrapped upload size error"},
                         "500": {"description": "Wrapped server error"},
                     },
+                    "security": [{"ApiKeyAuth": []}],
+                }
+            }
+        },
+        "components": {
+            "securitySchemes": {
+                "ApiKeyAuth": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-API-Key",
+                    "description": "Required only when the service is started with API_KEYS set.",
                 }
             }
         },

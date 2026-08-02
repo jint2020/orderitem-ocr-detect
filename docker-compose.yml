@@ -22,6 +22,8 @@ services:
       RECOGNITION_MODEL_DIR: ${RECOGNITION_MODEL_DIR:-models/PP-OCRv6_medium_rec}
       DOC_ORIENTATION_MODEL_DIR: ${DOC_ORIENTATION_MODEL_DIR:-models/PP-LCNet_x1_0_doc_ori}
       MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-20971520}
+      # API Key 鉴权，逗号分隔可配多个。留空 = 不鉴权，公网部署务必设置。
+      API_KEYS: ${API_KEYS:-}
       # oneDNN 与 PP-OCRv6 在 paddlepaddle 3.3.1 上不兼容，默认关闭。
       ENABLE_MKLDNN: ${ENABLE_MKLDNN:-false}
       # 关掉 PIR 新执行器可绕开上述 oneDNN bug，与 ENABLE_MKLDNN=true 配合使用。
