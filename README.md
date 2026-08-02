@@ -117,6 +117,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 |---|---|---|
 | `OCR_PORT` | `8080` | Host port mapped to the container's 5000 |
 | `GUNICORN_WORKERS` | `2` | Gunicorn workers; each loads its own PaddleOCR model on first request |
+| `GUNICORN_THREADS` | `1` | Request threads per worker. Concurrent OCRs = workers x threads; keep `GUNICORN_WORKERS x GUNICORN_THREADS x CPU_THREADS` near the core count. |
 | `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | Detection model directory |
 | `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
 | `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
@@ -124,7 +125,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | `INFERENCE_ENGINE` | `paddle` | Inference backend: `paddle` or `onnxruntime`. ONNX Runtime bypasses the paddle backend (whose oneDNN path is unusable, see below); requires `inference.onnx` in each model directory — see `models/README.md` for conversion. Measured on a 4-core CPU: **21.3s -> 4.2s** per request with identical field quality. Default stays `paddle` because a deployment without converted models cannot run this backend. |
 | `ENABLE_MKLDNN` | `false` | oneDNN acceleration. PaddleOCR enables it by default, but paddlepaddle 3.3.1's oneDNN + PIR executor fails on PP-OCRv6 detection models, so it is disabled here. |
 | `ENABLE_NEW_IR` | `true` | PIR toggle. Measured: `ENABLE_MKLDNN=true` + `ENABLE_NEW_IR=false` still crashes — paddlex calls `config.enable_new_executor()` unconditionally, and the crash lives in that executor. Kept only for re-testing on other paddle versions. |
-| `CPU_THREADS` | `cores / 2` | Inference threads per pass. Keep `GUNICORN_WORKERS × CPU_THREADS ≈ cores`. |
+| `CPU_THREADS` | `cores / 2` | Inference threads per OCR pass. Keep `GUNICORN_WORKERS × GUNICORN_THREADS × CPU_THREADS ≈ cores`. |
 | `TEXT_DET_LIMIT_SIDE_LEN` | unset | Detection input scaling. Unset keeps PaddleOCR's pipeline default (`64` / `min`, i.e. large images are barely downscaled). Set to `960` with `TEXT_DET_LIMIT_TYPE=max` to cap the long side — usually the largest speedup, at the cost of possibly missing small text. |
 | `TEXT_DET_LIMIT_TYPE` | unset | `max` or `min`; see above. |
 
