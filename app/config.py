@@ -8,6 +8,12 @@ DOC_ORIENTATION_MODEL_DIR = Path(
 )
 MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 20 * 1024 * 1024))
 
+# API Key 鉴权。逗号分隔，支持配置多个以便轮换。
+# 留空则不鉴权——本地开发与测试无需额外配置，但公网部署必须设置。
+API_KEYS = tuple(
+    key.strip() for key in os.environ.get("API_KEYS", "").split(",") if key.strip()
+)
+
 # 推理后端。
 # - "paddle"（默认）：paddlepaddle 自带后端。因 oneDNN 不可用（见 ENABLE_MKLDNN），
 #   实际走的是未加速的通用 CPU 算子。

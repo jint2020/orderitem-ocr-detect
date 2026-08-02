@@ -60,6 +60,23 @@ When `label_image=false` is passed, the `label_image_base64` key is omitted enti
 
 Request errors return the same wrapper shape with non-zero `code`, empty `content`, and a message such as `image is required`, `unsupported image type`, or `invalid image file`.
 
+### Authentication
+
+Set `API_KEYS` (comma-separated, multiple allowed for rotation) to require an API key on
+`POST /api/v1/ocr/orders`:
+
+```bash
+curl -X POST -H "X-API-Key: $KEY" \
+  -F "image=@data/validation/example.jpg" \
+  http://127.0.0.1:5000/api/v1/ocr/orders
+```
+
+A missing or wrong key returns `{"code": 401, "content": {}, "message": "invalid or missing api key"}`.
+Leaving `API_KEYS` unset disables the check entirely, which keeps local development and the test
+suite working — but the endpoint returns real phone numbers and names, so any internet-facing
+deployment must set it. `GET /api/v1/openapi.json` is exempt: it serves a static schema and backs
+the container healthcheck.
+
 ### OpenAPI schema
 
 ```http
@@ -116,12 +133,14 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | Variable | Default | Purpose |
 |---|---|---|
 | `OCR_PORT` | `8080` | Host port mapped to the container's 5000 |
+| `OCR_BIND_HOST` | `0.0.0.0` | Address the host port binds to. Set to `127.0.0.1` when a reverse proxy fronts the service so the container port is not reachable from outside. |
 | `GUNICORN_WORKERS` | `2` | Gunicorn workers; each loads its own PaddleOCR model on first request |
 | `GUNICORN_THREADS` | `1` | Request threads per worker. Concurrent OCRs = workers x threads; keep `GUNICORN_WORKERS x GUNICORN_THREADS x CPU_THREADS` near the core count. |
 | `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | Detection model directory |
 | `RECOGNITION_MODEL_DIR` | `models/PP-OCRv6_medium_rec` | Recognition model directory |
 | `DOC_ORIENTATION_MODEL_DIR` | `models/PP-LCNet_x1_0_doc_ori` | Document orientation classifier directory |
 | `MAX_CONTENT_LENGTH` | `20971520` (20 MiB) | Max upload size in bytes |
+| `API_KEYS` | unset | Comma-separated API keys. Unset disables auth. When set, `POST /api/v1/ocr/orders` requires an `X-API-Key` header matching one of them; `GET /api/v1/openapi.json` stays open so the container healthcheck keeps working. |
 | `INFERENCE_ENGINE` | `paddle` | Inference backend: `paddle` or `onnxruntime`. ONNX Runtime bypasses the paddle backend (whose oneDNN path is unusable, see below); requires `inference.onnx` in each model directory — see `models/README.md` for conversion. Measured on a 4-core CPU: **21.3s -> 4.2s** per request with identical field quality. Default stays `paddle` because a deployment without converted models cannot run this backend. |
 | `ENABLE_MKLDNN` | `false` | oneDNN acceleration. PaddleOCR enables it by default, but paddlepaddle 3.3.1's oneDNN + PIR executor fails on PP-OCRv6 detection models, so it is disabled here. |
 | `ENABLE_NEW_IR` | `true` | PIR toggle. Measured: `ENABLE_MKLDNN=true` + `ENABLE_NEW_IR=false` still crashes — paddlex calls `config.enable_new_executor()` unconditionally, and the crash lives in that executor. Kept only for re-testing on other paddle versions. |

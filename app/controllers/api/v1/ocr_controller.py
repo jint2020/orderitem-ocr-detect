@@ -2,12 +2,16 @@ from PIL import UnidentifiedImageError
 from flask import Blueprint, current_app, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
+from app.controllers.api.v1.auth import verify_api_key
 from app.schemas.ocr_schema import build_openapi_schema
 from app.services.image_service import validate_upload_image
 from app.services.ocr_service import OcrProcessingError, OcrService
 from app.views.json_response import error, success
 
 api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+
+# 未配置 API_KEYS 时为空操作，见 auth.verify_api_key。
+api_v1.before_request(verify_api_key)
 
 
 @api_v1.errorhandler(RequestEntityTooLarge)

@@ -200,3 +200,91 @@ def test_provider_exception_returns_wrapped_500(tmp_path):
 
     assert response.status_code == 500
     assert response.get_json() == {"code": 500, "content": {}, "message": "ocr processing failed"}
+
+
+def _auth_app(tmp_path, api_keys):
+    return create_app(
+        {
+            "TESTING": True,
+            "OCR_PROVIDER_FACTORY": lambda app: FakeProvider(),
+            "API_KEYS": api_keys,
+        }
+    )
+
+
+def test_api_key_disabled_by_default_allows_request(tmp_path):
+    client = _app(tmp_path).test_client()
+
+    response = client.post(
+        "/api/v1/ocr/orders",
+        data={"image": (_image_bytes(), "order.jpg")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+
+
+def test_missing_api_key_returns_wrapped_401(tmp_path):
+    client = _auth_app(tmp_path, ("secret-key",)).test_client()
+
+    response = client.post(
+        "/api/v1/ocr/orders",
+        data={"image": (_image_bytes(), "order.jpg")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "code": 401,
+        "content": {},
+        "message": "invalid or missing api key",
+    }
+
+
+def test_wrong_api_key_returns_wrapped_401(tmp_path):
+    client = _auth_app(tmp_path, ("secret-key",)).test_client()
+
+    response = client.post(
+        "/api/v1/ocr/orders",
+        data={"image": (_image_bytes(), "order.jpg")},
+        content_type="multipart/form-data",
+        headers={"X-API-Key": "wrong-key"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_valid_api_key_allows_request(tmp_path):
+    client = _auth_app(tmp_path, ("secret-key",)).test_client()
+
+    response = client.post(
+        "/api/v1/ocr/orders",
+        data={"image": (_image_bytes(), "order.jpg")},
+        content_type="multipart/form-data",
+        headers={"X-API-Key": "secret-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["code"] == 0
+
+
+def test_any_configured_api_key_is_accepted(tmp_path):
+    client = _auth_app(tmp_path, ("old-key", "new-key")).test_client()
+
+    for key in ("old-key", "new-key"):
+        response = client.post(
+            "/api/v1/ocr/orders",
+            data={"image": (_image_bytes(), "order.jpg")},
+            content_type="multipart/form-data",
+            headers={"X-API-Key": key},
+        )
+        assert response.status_code == 200, key
+
+
+def test_openapi_is_exempt_from_api_key(tmp_path):
+    client = _auth_app(tmp_path, ("secret-key",)).test_client()
+
+    response = client.get("/api/v1/openapi.json")
+
+    assert response.status_code == 200
+    assert response.get_json()["code"] == 0

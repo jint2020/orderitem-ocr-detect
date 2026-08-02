@@ -144,6 +144,219 @@ sudo ufw allow 8080/tcp
 
 只想本机/内网访问时，可把 `docker-compose.yml` 的端口映射改为 `"127.0.0.1:${OCR_PORT:-8080}:5000"`。
 
+## 6.0 开启 API Key 鉴权
+
+接口返回真实号码与姓名，**公网暴露前必须开启鉴权**。
+
+生成并配置：
+
+```bash
+cd ~/orderitem-ocr-detect
+echo "API_KEYS=$(openssl rand -hex 32)" >> .env
+docker compose up -d          # 改环境变量需 up -d，restart 不生效
+grep API_KEYS .env            # 把 key 交给调用方
+```
+
+调用方通过请求头传递：
+
+```bash
+curl -X POST -H "X-API-Key: <key>" \
+  -F "image=@order.jpg" \
+  "https://ocr.example.com:8443/api/v1/ocr/orders?label_image=false"
+```
+
+验证鉴权确实生效——不带 key 应返回 401：
+
+```bash
+curl -s -X POST -F "image=@order.jpg" \
+  "https://ocr.example.com:8443/api/v1/ocr/orders" | head -c 120
+# {"code":401,"content":{},"message":"invalid or missing api key"}
+```
+
+说明：
+
+- `API_KEYS` 支持逗号分隔配置多个，便于轮换：先加新 key，待调用方全部切换后再删旧 key。
+- `GET /api/v1/openapi.json` 不鉴权——它只返回静态 schema，且被容器健康检查使用。
+- 留空 `API_KEYS` 则完全不鉴权，仅适用于本地开发与内网隔离环境。
+
+## 6.1 HTTPS（Nginx 反向代理 + Let's Encrypt）
+
+### 前置条件
+
+- 域名 A 记录已解析到本机公网 IP。
+- **国内服务器需完成 ICP 备案**，否则 80/443 会被运营商拦截，Let's Encrypt 的 HTTP-01
+  验证也无法通过。未备案时只能改用非标端口，或改用 DNS-01 验证。
+- 安全组 / `ufw` 放通 80 与 443。
+
+### 只让代理访问容器
+
+反代到位后，容器端口不应再直接暴露到公网。在 `.env` 中设置：
+
+```bash
+OCR_BIND_HOST=127.0.0.1
+```
+
+```bash
+docker compose up -d
+sudo ufw delete allow 8080/tcp   # 如果之前放通过
+```
+
+### 安装并配置 Nginx
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo ufw allow 'Nginx Full'
+```
+
+`/etc/nginx/sites-available/ocr`（把 `ocr.example.com` 换成你的域名）：
+
+```nginx
+server {
+    listen 80;
+    server_name ocr.example.com;
+
+    # 应用允许 20 MiB 上传，Nginx 默认只有 1m，不改会直接 413。
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 与 gunicorn 的 --timeout 300 对齐：每个 worker 的首个请求要懒加载模型，
+        # 可能耗时数十秒，Nginx 默认 60s 会先超时。
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+    }
+}
+```
+
+启用并签发证书：
+
+```bash
+sudo ln -s /etc/nginx/sites-available/ocr /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo certbot --nginx -d ocr.example.com
+```
+
+`certbot --nginx` 会自动补上 443 server 块、证书路径与 80→443 跳转，并注册续期定时器。
+
+### 验证
+
+```bash
+curl -sI https://ocr.example.com/api/v1/openapi.json | head -3
+curl -X POST -F "image=@data/test/xxx.jpg" \
+  "https://ocr.example.com/api/v1/ocr/orders?label_image=false"
+
+systemctl list-timers | grep certbot     # 自动续期已注册
+sudo certbot renew --dry-run             # 演练续期
+```
+
+### 未备案时的替代方案：DNS-01 + 非标端口
+
+境内服务器上，未备案域名会被云厂商拦截，表现为 certbot 报：
+
+```
+Type:   unauthorized
+Detail: <IP>: Invalid response from https://dnspod.qcloud.com/static/webblock.html?d=<域名>
+```
+
+报错里的 IP 往往**不是你的服务器**，而是云厂商的拦截服务器——未备案域名的解析会被劫持过去。
+
+绕开的办法是：用 DNS-01 验证签发证书（不需要 80 可达），Nginx 监听非标端口（不在
+80/443 的拦截范围内）。**这只是技术上可行的临时方案，未备案域名在境内服务器提供
+Web 服务本身不合规，正式对外仍需备案。** 且解析层面若被再次劫持，换端口也无济于事。
+
+签发证书（手动 DNS 验证）：
+
+```bash
+sudo certbot certonly --manual --preferred-challenges dns -d ocr.example.com
+```
+
+按提示在 DNS 服务商处添加 TXT 记录。注意「主机记录」是**相对于域名的前缀**，
+对 `ocr.example.com` 应填 `_acme-challenge.ocr`，填完整域名会变成
+`_acme-challenge.ocr.example.com.example.com` 导致验证失败。
+
+回车前先确认记录已生效：
+
+```bash
+dig +short TXT _acme-challenge.ocr.example.com @119.29.29.29
+```
+
+Nginx 配置（`listen` 端口改为 8443，其余同上）：
+
+```nginx
+server {
+    listen 8443 ssl http2;
+    server_name ocr.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/ocr.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ocr.example.com/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+    }
+}
+```
+
+几个要点：
+
+- Ubuntu 24.04 自带 nginx 1.24，**不支持独立的 `http2 on;` 指令**（1.25.1 才引入），
+  必须写成 `listen 8443 ssl http2;`。
+- `certonly` 不会生成 `/etc/letsencrypt/options-ssl-nginx.conf` 与 `ssl-dhparams.pem`
+  （那两个文件由 `--nginx` 安装器生成），因此 TLS 参数直接内联，避免 `include` 不存在的文件。
+- 主机防火墙与**云厂商安全组**都要放通 8443，只放一处的表现是连接超时。
+- `--manual` 签发的证书**无法自动续期**，90 天后需重复上述步骤。要自动化可安装
+  DNS 插件（如 `certbot-dns-tencentcloud`）配合 API 密钥使用。
+
+验证（必须从外网的机器上测，服务器本机走回环，验证不到公网链路）：
+
+```bash
+dig +short A ocr.example.com
+nc -vz ocr.example.com 8443
+curl -X POST -F "image=@<图片>.jpg" \
+  "https://ocr.example.com:8443/api/v1/ocr/orders?label_image=false"
+```
+
+若要先确认 Nginx 本身无误、把问题范围缩小到 DNS 或安全组，在服务器上执行：
+
+```bash
+curl -sk --resolve ocr.example.com:8443:127.0.0.1 \
+  "https://ocr.example.com:8443/api/v1/openapi.json" | head -c 200
+```
+
+### 可选：压缩 JSON 响应
+
+带标注图时响应含 base64 JPEG，可达数 MB。在 server 块内加：
+
+```nginx
+    gzip on;
+    gzip_types application/json;
+    gzip_min_length 1024;
+```
+
 ## 7. 日常运维
 
 ```bash
