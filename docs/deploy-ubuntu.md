@@ -144,6 +144,96 @@ sudo ufw allow 8080/tcp
 
 只想本机/内网访问时，可把 `docker-compose.yml` 的端口映射改为 `"127.0.0.1:${OCR_PORT:-8080}:5000"`。
 
+## 6.1 HTTPS（Nginx 反向代理 + Let's Encrypt）
+
+### 前置条件
+
+- 域名 A 记录已解析到本机公网 IP。
+- **国内服务器需完成 ICP 备案**，否则 80/443 会被运营商拦截，Let's Encrypt 的 HTTP-01
+  验证也无法通过。未备案时只能改用非标端口，或改用 DNS-01 验证。
+- 安全组 / `ufw` 放通 80 与 443。
+
+### 只让代理访问容器
+
+反代到位后，容器端口不应再直接暴露到公网。在 `.env` 中设置：
+
+```bash
+OCR_BIND_HOST=127.0.0.1
+```
+
+```bash
+docker compose up -d
+sudo ufw delete allow 8080/tcp   # 如果之前放通过
+```
+
+### 安装并配置 Nginx
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo ufw allow 'Nginx Full'
+```
+
+`/etc/nginx/sites-available/ocr`（把 `ocr.example.com` 换成你的域名）：
+
+```nginx
+server {
+    listen 80;
+    server_name ocr.example.com;
+
+    # 应用允许 20 MiB 上传，Nginx 默认只有 1m，不改会直接 413。
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 与 gunicorn 的 --timeout 300 对齐：每个 worker 的首个请求要懒加载模型，
+        # 可能耗时数十秒，Nginx 默认 60s 会先超时。
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+    }
+}
+```
+
+启用并签发证书：
+
+```bash
+sudo ln -s /etc/nginx/sites-available/ocr /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo certbot --nginx -d ocr.example.com
+```
+
+`certbot --nginx` 会自动补上 443 server 块、证书路径与 80→443 跳转，并注册续期定时器。
+
+### 验证
+
+```bash
+curl -sI https://ocr.example.com/api/v1/openapi.json | head -3
+curl -X POST -F "image=@data/test/xxx.jpg" \
+  "https://ocr.example.com/api/v1/ocr/orders?label_image=false"
+
+systemctl list-timers | grep certbot     # 自动续期已注册
+sudo certbot renew --dry-run             # 演练续期
+```
+
+### 可选：压缩 JSON 响应
+
+带标注图时响应含 base64 JPEG，可达数 MB。在 server 块内加：
+
+```nginx
+    gzip on;
+    gzip_types application/json;
+    gzip_min_length 1024;
+```
+
 ## 7. 日常运维
 
 ```bash

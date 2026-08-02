@@ -116,6 +116,7 @@ Configuration via environment (set in `docker-compose.yml` or a `.env` file):
 | Variable | Default | Purpose |
 |---|---|---|
 | `OCR_PORT` | `8080` | Host port mapped to the container's 5000 |
+| `OCR_BIND_HOST` | `0.0.0.0` | Address the host port binds to. Set to `127.0.0.1` when a reverse proxy fronts the service so the container port is not reachable from outside. |
 | `GUNICORN_WORKERS` | `2` | Gunicorn workers; each loads its own PaddleOCR model on first request |
 | `GUNICORN_THREADS` | `1` | Request threads per worker. Concurrent OCRs = workers x threads; keep `GUNICORN_WORKERS x GUNICORN_THREADS x CPU_THREADS` near the core count. |
 | `DETECTION_MODEL_DIR` | `models/PP-OCRv6_small_det_infer` | Detection model directory |
