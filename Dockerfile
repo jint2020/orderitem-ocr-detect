@@ -61,10 +61,16 @@ RUN if [ -n "$PYPI_FILES_BASE" ]; then \
 COPY app ./app
 
 ENV FLASK_APP=app \
-    GUNICORN_WORKERS=2
+    GUNICORN_WORKERS=2 \
+    GUNICORN_THREADS=1
 
 EXPOSE 5000
 
-# gunicorn 启动；worker 数可通过 GUNICORN_WORKERS 覆盖。
+# gunicorn 启动；worker 数与每 worker 线程数均可通过环境变量覆盖。
 # 每个 worker 会在首次 OCR 请求时懒加载 PaddleOCR 模型（内存与 worker 数成正比）。
-CMD ["sh", "-c", "gunicorn --workers ${GUNICORN_WORKERS:-2} --threads 2 --timeout 300 --bind 0.0.0.0:5000 'app:create_app()'"]
+#
+# 并发 OCR 数 = GUNICORN_WORKERS × GUNICORN_THREADS，每个 OCR 又会用
+# CPU_THREADS 个算子线程，三者相乘才是真实的线程压力：
+#     GUNICORN_WORKERS × GUNICORN_THREADS × CPU_THREADS ≈ CPU 核数
+# OCR 是 CPU 密集型，线程默认 1（排队优于超额订阅）。
+CMD ["sh", "-c", "gunicorn --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-1} --timeout 300 --bind 0.0.0.0:5000 'app:create_app()'"]

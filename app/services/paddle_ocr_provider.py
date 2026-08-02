@@ -116,10 +116,15 @@ def build_paddleocr(
         # 每个模型目录里除 inference.yml 外还需有 inference.onnx（见 models/README.md
         # 的转换步骤）。oneDNN / PIR 相关配置只对 paddle 后端有意义，这里一概不传。
         kwargs["engine"] = "onnxruntime"
+        ort_config: dict[str, Any] = {
+            # paddle2onnx 导出的图里带有一批无节点引用的常量，ORT 每次加载都会逐条
+            # 打 CleanUnusedInitializersAndNodeArgs 警告刷屏。它们由 ORT 自行清理，
+            # 不影响结果，这里把日志级别压到 error 只是为了不淹没真正的错误。
+            "log_severity_level": 3,
+        }
         if cpu_threads is not None:
-            kwargs["engine_config"] = {
-                "onnxruntime": {"intra_op_num_threads": cpu_threads}
-            }
+            ort_config["intra_op_num_threads"] = cpu_threads
+        kwargs["engine_config"] = {"onnxruntime": ort_config}
     else:
         # PaddleOCR 默认 enable_mkldnn=True；oneDNN 与 PP-OCRv6 在 paddlepaddle
         # 3.3.1 上不兼容，关闭后走通用 CPU 算子（run_mode="paddle"）。见 app/config.py。
